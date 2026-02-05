@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">YT Now Playing</string>
+    <string name="service_label">YT Now Playing Listener</string>
+</resources>
