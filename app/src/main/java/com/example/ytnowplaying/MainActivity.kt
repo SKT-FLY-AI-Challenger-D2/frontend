@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import android.net.Uri
+
 
 class MainActivity : ComponentActivity() {
 
@@ -25,7 +27,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 MinimalScreen(
-                    onOpenPermissionSettings = { openNotificationAccessSettings() }
+                    onOpenPermissionSettings = { openNotificationAccessSettings() },
+                    onOpenOverlaySettings = { openOverlayPermissionSettings() }
                 )
             }
         }
@@ -34,19 +37,30 @@ class MainActivity : ComponentActivity() {
     private fun openNotificationAccessSettings() {
         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
+
+    private fun openOverlayPermissionSettings() {
+        val uri = Uri.parse("package:$packageName")
+        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, uri))
+    }
 }
 
 @Composable
 private fun MinimalScreen(
-    onOpenPermissionSettings: () -> Unit
+    onOpenPermissionSettings: () -> Unit,
+    onOpenOverlaySettings: () -> Unit
 ) {
     Column(Modifier.padding(20.dp)) {
         Text("1) 알림 접근(Notification access) 권한을 켜세요.")
         Spacer(Modifier.height(12.dp))
-        Button(onClick = onOpenPermissionSettings) {
-            Text("권한 설정 열기")
-        }
+        Button(onClick = onOpenPermissionSettings) { Text("알림 접근 설정 열기") }
+
+        Spacer(Modifier.height(16.dp))
+        Text("2) 오버레이(다른 앱 위에 표시) 권한을 켜세요.")
         Spacer(Modifier.height(12.dp))
-        Text("2) 유튜브에서 영상을 바꾸면 Logcat(TAG=YTNowPlaying)에 [CONFIRMED] 로그가 찍혀야 합니다.")
+        Button(onClick = onOpenOverlaySettings) { Text("오버레이 권한 설정 열기") }
+
+        Spacer(Modifier.height(16.dp))
+        Text("3) 유튜브에서 영상을 바꾸면 백엔드 응답이 오버레이로 표시됩니다.")
     }
 }
+

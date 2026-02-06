@@ -14,6 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import com.example.ytnowplaying.render.OverlayAlertRenderer
+import com.example.ytnowplaying.render.AlertRenderer
+import kotlinx.coroutines.withContext
+
+
 
 private const val TAG = "YTNowPlaying"
 
@@ -48,6 +53,9 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
     // 에뮬레이터 기준. 실기기는 PC LAN IP로 바꿔야 함.
     private val backend = BackendClient("http://10.0.2.2:8000/")
+
+    private val renderer: AlertRenderer by lazy { OverlayAlertRenderer(applicationContext) }
+
 
     @Volatile private var latestVideoKey: String? = null
 
@@ -228,7 +236,19 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             }
 
             Log.d(TAG, "[Backend] key=$key alertText=${alertText?.take(80) ?: "null"}")
-            // TODO: 여기서 renderer 호출
+            //
+
+            withContext(Dispatchers.Main) {
+                if (latestVideoKey != key) return@withContext // 늦게 온 응답 폐기
+
+                if (alertText.isNullOrBlank()) {
+                    renderer.clearWarning()
+                } else {
+                    renderer.showWarning(alertText)
+                }
+            }
+
+
         }
     }
 
