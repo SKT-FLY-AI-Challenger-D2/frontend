@@ -4,6 +4,19 @@ import android.util.Log
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
+
+private fun createOkHttpClient(): OkHttpClient {
+    return OkHttpClient.Builder()
+        // 연결 타임아웃 (서버와 연결되는 시간)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        // 읽기 타임아웃 (데이터를 받아오는 시간 - LLM이 길게 말할 수 있으므로 넉넉히 설정)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+}
+
 private const val TAG = "YtApi"
 
 class BackendClient(baseUrl: String) {
@@ -11,6 +24,7 @@ class BackendClient(baseUrl: String) {
     private val retrofit = Retrofit.Builder()
         .baseUrl(baseUrl) // "http://10.0.2.2:8000/" 형태
         .addConverterFactory(GsonConverterFactory.create())
+        .client(createOkHttpClient())
         .build()
 
     private val api = retrofit.create(BackendApi::class.java)
