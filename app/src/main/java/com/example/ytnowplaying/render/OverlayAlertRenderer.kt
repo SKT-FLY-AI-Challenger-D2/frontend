@@ -10,119 +10,107 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 
 private const val TAG = "OverlayRenderer"
 
 class OverlayAlertRenderer(
     private val appCtx: Context,
-    private val autoDismissMs: Long = 20_000L, // ✅ 자동 제거 시간(원하면 변경)
+    private val autoDismissMs: Long = 8_000L, // 0이면 자동 제거 비활성
 ) : AlertRenderer {
 
     private val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
 
-    private var rootView: View? = null          // FrameLayout
-    private var textView: TextView? = null      // 본문
-    private var closeView: TextView? = null     // X 버튼
+    private var rootView: View? = null
+    private var textView: TextView? = null
+    private var closeView: TextView? = null
     private var isAdded = false
 
+    private var lastOnTap: (() -> Unit)? = null
     private val removeRunnable = Runnable { clearWarning() }
 
-    override fun showWarning(text: String) {
-        // ✅ 안전하게 항상 메인에서 처리
-        main.post {
-            if (!Settings.canDrawOverlays(appCtx)) {
-                Log.w(TAG, "No overlay permission. Ask user to enable 'Draw over other apps'.")
-                return@post
+    override fun showWarning(text: String, onTap: (() -> Unit)?) {
+        if (!Settings.canDrawOverlays(appCtx)) {
+            Log.w(TAG, "No overlay permission.")
+            return
+        }
+
+        lastOnTap = onTap
+        ensureView()
+
+        textView?.text = text
+
+        // 탭 동작: onTap 있으면 실행, 없으면 닫기
+        rootView?.setOnClickListener {
+            val cb = lastOnTap
+            if (cb != null) cb() else clearWarning()
+        }
+
+        // 닫기(X)는 항상 닫기
+        closeView?.setOnClickListener { clearWarning() }
+
+        if (!isAdded) {
+            try {
+                wm.addView(rootView, buildLayoutParams())
+                isAdded = true
+            } catch (t: Throwable) {
+                Log.e(TAG, "addView failed: ${t.message}", t)
+                isAdded = false
             }
+        }
 
-            if (rootView == null) {
-                // ✅ 컨테이너 생성 (본문 + 닫기 버튼)
-                val container = FrameLayout(appCtx).apply {
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
-                    setBackgroundColor(0xEE111111.toInt())
-                }
-
-                val tv = TextView(appCtx).apply {
-                    textSize = 14f
-                    setTextColor(0xFFFFFFFF.toInt())
-                }
-
-                val close = TextView(appCtx).apply {
-                    this.text = "✕"// 리소스 없이 닫기
-                    textSize = 18f
-                    setTextColor(0xFFFFFFFF.toInt())
-                    setPadding(dp(8), dp(2), dp(8), dp(2))
-                    setOnClickListener { clearWarning() }
-                }
-
-                // 본문: 오른쪽에 X 자리 확보
-                container.addView(
-                    tv,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        marginEnd = dp(32)
-                    }
-                )
-
-                // 닫기 버튼: 우상단
-                container.addView(
-                    close,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = Gravity.END or Gravity.TOP
-                    }
-                )
-
-                // 기존 “탭하면 닫기” 유지하고 싶으면 컨테이너에 리스너 유지
-                container.setOnClickListener { clearWarning() }
-
-                textView = tv
-                closeView = close
-                rootView = container
-            }
-
-            textView?.text = text
-
-            if (!isAdded) {
-                try {
-                    wm.addView(rootView, buildLayoutParams())
-                    isAdded = true
-                } catch (t: Throwable) {
-                    Log.e(TAG, "addView failed: ${t.message}", t)
-                    isAdded = false
-                    return@post
-                }
-            }
-
-            // ✅ 자동 제거 타이머 리셋
-            main.removeCallbacks(removeRunnable)
+        // 자동 제거 타이머 갱신
+        main.removeCallbacks(removeRunnable)
+        if (autoDismissMs > 0L) {
             main.postDelayed(removeRunnable, autoDismissMs)
         }
     }
 
     override fun clearWarning() {
-        main.post {
-            // ✅ 타이머 취소
-            main.removeCallbacks(removeRunnable)
+        main.removeCallbacks(removeRunnable)
+        lastOnTap = null
 
-            if (!isAdded) return@post
-            try {
-                wm.removeView(rootView)
-            } catch (t: Throwable) {
-                Log.w(TAG, "removeView failed: ${t.message}")
-                // 필요하면 immediate로 강제
-                runCatching { wm.removeViewImmediate(rootView) }
-            } finally {
-                isAdded = false
-            }
+        if (!isAdded) return
+        try {
+            wm.removeView(rootView)
+        } catch (t: Throwable) {
+            Log.w(TAG, "removeView failed: ${t.message}")
+        } finally {
+            isAdded = false
         }
+    }
+
+    private fun ensureView() {
+        if (rootView != null) return
+
+        val container = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(32, 24, 32, 24)
+            setBackgroundColor(0xEE111111.toInt())
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val tv = TextView(appCtx).apply {
+            textSize = 14f
+            setTextColor(0xFFFFFFFF.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val x = TextView(appCtx).apply {
+            text = "✕" // 리소스 없이 닫기
+            textSize = 18f
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(24, 0, 0, 0)
+        }
+
+        container.addView(tv)
+        container.addView(x)
+
+        textView = tv
+        closeView = x
+        rootView = container
     }
 
     private fun buildLayoutParams(): WindowManager.LayoutParams {
@@ -147,7 +135,4 @@ class OverlayAlertRenderer(
             y = 0
         }
     }
-
-    private fun dp(v: Int): Int =
-        (v * appCtx.resources.displayMetrics.density).toInt()
 }

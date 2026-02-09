@@ -8,17 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.util.Log
-import com.example.ytnowplaying.data.BackendClient
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import com.example.ytnowplaying.render.OverlayAlertRenderer
-import com.example.ytnowplaying.render.AlertRenderer
-import kotlinx.coroutines.withContext
-
-
+import com.example.ytnowplaying.nowplaying.NowPlayingCache
 
 private const val TAG = "YTNowPlaying"
 
@@ -29,35 +19,25 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     private var msm: MediaSessionManager? = null
     private var currentController: MediaController? = null
 
-    // --- "영상 변경 확정"용 최소 로직 ---
-    private var pendingKey: String? = null
+    // --- "영상 변경 확정"용 디바운스 ---
+    private var pendingStableKey: String? = null
     private var pendingInfo: NowPlayingInfo? = null
     private var pendingRunnable: Runnable? = null
 
-    // ✅ 전송 dedup (실제 전송 성공/시도 시점에만 갱신해야 함)
-    private var lastSentKey: String? = null
-    private var lastSentAtMs: Long = 0L
-
     private val DEBOUNCE_MS = 800L
-    private val DEDUP_TTL_MS = 10 * 60_000L
 
-    // --- channel 올 때까지 전송 보류(hold) ---
-    private var holdKey: String? = null
+    // --- channel 올 때까지 전송/캐시 보류(hold) ---
+    private var holdStableKey: String? = null
     private var holdAttempts: Int = 0
     private var holdRunnable: Runnable? = null
 
     private val HOLD_RETRY_MS = 200L
     private val HOLD_MAX_TRIES = 15 // 3초
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    // 에뮬레이터 기준. 실기기는 PC LAN IP로 바꿔야 함.
-    private val backend = BackendClient("http://10.0.2.2:8000/", useFake = true)
-
-    private val renderer: AlertRenderer by lazy { OverlayAlertRenderer(applicationContext) }
-
-
-    @Volatile private var latestVideoKey: String? = null
+    // --- “캐시 업데이트” dedup (너무 자주 갱신 방지) ---
+    private var lastCachedKey: String? = null
+    private var lastCachedAtMs: Long = 0L
+    private val CACHE_DEDUP_TTL_MS = 10_000L // 10초 내 동일 stableKey는 갱신 스킵(원하면 조절)
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: android.media.MediaMetadata?) {
@@ -70,13 +50,14 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         }
 
         override fun onPlaybackStateChanged(state: PlaybackState?) {
-            // 필요하면 PLAYING에서만 처리하도록 제한 가능
+            // 필요 시 PLAYING 조건 등 추가 가능
         }
     }
 
-    private val activeSessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
-        attachToYoutubeController(controllers.orEmpty())
-    }
+    private val activeSessionsListener =
+        MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+            attachToYoutubeController(controllers.orEmpty())
+        }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -103,9 +84,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
         attachToYoutubeController(controllers)
 
-        // 연결 직후 메타데이터가 있으면 확정 시도
-        currentController
-            ?.let { NowPlayingFetcher.extractFromMediaController(it) }
+        currentController?.let { NowPlayingFetcher.extractFromMediaController(it) }
             ?.let { scheduleConfirm(it) }
     }
 
@@ -113,19 +92,17 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         detachController()
         try { msm?.removeOnActiveSessionsChangedListener(activeSessionsListener) } catch (_: Throwable) {}
         msm = null
-        cancelHold()
         Log.i(TAG, "NotificationListener disconnected")
         super.onListenerDisconnected()
     }
 
     override fun onDestroy() {
-        cancelHold()
         pendingRunnable?.let { mainHandler.removeCallbacks(it) }
+        holdRunnable?.let { mainHandler.removeCallbacks(it) }
         pendingRunnable = null
-        pendingKey = null
-        pendingInfo = null
-
-        scope.cancel()
+        holdRunnable = null
+        pendingStableKey = null
+        holdStableKey = null
         super.onDestroy()
     }
 
@@ -160,135 +137,90 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         currentController = null
     }
 
-    // --- 영상 변경 확정 로직(디바운스 + 중복억제) ---
     private fun scheduleConfirm(info: NowPlayingInfo) {
-        val key = buildVideoKey(info)
+        val stableKey = buildStableKey(info)
 
-        // ✅ 다른 영상으로 바뀌면 기존 HOLD는 의미 없으니 취소
-        if (holdKey != null && holdKey != key) cancelHold()
-
-        if (pendingKey == key) {
+        if (pendingStableKey == stableKey) {
             pendingInfo = info
             return
         }
 
         pendingRunnable?.let { mainHandler.removeCallbacks(it) }
-        pendingKey = key
+        pendingStableKey = stableKey
         pendingInfo = info
 
         val r = Runnable {
             val confirmed = pendingInfo ?: return@Runnable
             pendingRunnable = null
-            pendingKey = null
+            pendingStableKey = null
             pendingInfo = null
             onVideoConfirmed(confirmed)
         }
         pendingRunnable = r
         mainHandler.postDelayed(r, DEBOUNCE_MS)
 
-        Log.d(TAG, "[pending] key=$key title='${info.title}'")
-    }
-
-    private fun onVideoConfirmed(info: NowPlayingInfo) {
-        // ✅ 전송/홀드 판단은 이 함수가 아니라 trySendOrHold에서만 수행
-        trySendOrHold(info)
+        Log.d(TAG, "[pending] stableKey=$stableKey title='${info.title}'")
     }
 
     /**
-     * ✅ 핵심:
-     * - channel이 비어있으면 HOLD만 걸고 종료 (dedup 갱신 금지)
-     * - channel이 있을 때만 dedup 체크 + lastSent 갱신 + 전송
+     * 여기서는 "전송" 절대 하지 않는다.
+     * channel이 채워진 info만 NowPlayingCache에 저장한다.
      */
-    private fun trySendOrHold(info: NowPlayingInfo) {
-        val key = buildVideoKey(info)
+    private fun onVideoConfirmed(info: NowPlayingInfo) {
+        val stableKey = buildStableKey(info)
         val ch = info.channel?.trim().orEmpty()
-
-        if (ch.isBlank()) {
-            Log.i(TAG, "[HOLD] channel empty -> do NOT send yet. key=$key")
-            startHoldForChannel(key)
-            return
-        }
-
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (key == lastSentKey && (now - lastSentAtMs) < DEDUP_TTL_MS) {
-            Log.d(TAG, "[dedup] skip key=$key")
-            return
-        }
-
-        // ✅ 여기서만 dedup state 갱신
-        lastSentKey = key
-        lastSentAtMs = now
 
         Log.i(TAG, "[CONFIRMED] title='${info.title}', channel='$ch', durationMs=${info.durationMs ?: -1}")
 
-        latestVideoKey = key
-
-        scope.launch {
-            val alertText = try {
-                backend.search(
-                    videoKey = key,
-                    title = info.title,
-                    channel = ch
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "[Backend] call failed: ${e.message}")
-                null
-            }
-
-            Log.d(TAG, "[Backend] key=$key alertText=${alertText?.take(80) ?: "null"}")
-            //
-
-            withContext(Dispatchers.Main) {
-                if (latestVideoKey != key) return@withContext // 늦게 온 응답 폐기
-
-                if (alertText.isNullOrBlank()) {
-                    renderer.clearWarning()
-                } else {
-                    renderer.showWarning(alertText)
-                }
-            }
-
-
+        if (ch.isBlank()) {
+            Log.i(TAG, "[HOLD] channel empty -> wait. stableKey=$stableKey")
+            startHoldForChannel(stableKey)
+            return
         }
+
+        // ✅ cache dedup은 channel 확인 이후에만 갱신 (HOLD->dedup 꼬임 방지)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (stableKey == lastCachedKey && (now - lastCachedAtMs) < CACHE_DEDUP_TTL_MS) {
+            Log.d(TAG, "[cache-dedup] skip stableKey=$stableKey")
+            return
+        }
+        lastCachedKey = stableKey
+        lastCachedAtMs = now
+
+        NowPlayingCache.update(stableKey, info)
+        Log.i(TAG, "[CACHED] stableKey=$stableKey title='${info.title.take(60)}' channel='${ch.take(40)}'")
     }
 
-    private fun startHoldForChannel(key: String) {
-        if (holdKey == key && holdRunnable != null) return
+    private fun startHoldForChannel(stableKey: String) {
+        if (holdStableKey == stableKey && holdRunnable != null) return
 
-        cancelHold()
-        holdKey = key
+        holdRunnable?.let { mainHandler.removeCallbacks(it) }
+        holdStableKey = stableKey
         holdAttempts = 0
 
         val r = object : Runnable {
             override fun run() {
-                if (holdKey != key) return
-
+                if (holdStableKey != stableKey) return
                 holdAttempts++
 
                 val latest = currentController?.let { NowPlayingFetcher.extractFromMediaController(it) }
                 if (latest != null) {
-                    val k2 = buildVideoKey(latest)
+                    val k2 = buildStableKey(latest)
                     val ch2 = latest.channel?.trim().orEmpty()
 
-                    // ✅ 같은 영상이고 channel이 채워졌으면: "전송 함수"로 바로 진입
-                    if (k2 == key && ch2.isNotBlank()) {
-                        Log.i(TAG, "[HOLD] channel arrived after retry=$holdAttempts -> send now")
-                        cancelHold()
-                        trySendOrHold(latest)
-                        return
-                    }
-
-                    // ✅ 영상이 이미 바뀐 경우: HOLD는 의미 없으니 종료
-                    if (k2 != key) {
-                        Log.i(TAG, "[HOLD] video changed while holding -> cancel hold. old=$key new=$k2")
-                        cancelHold()
+                    if (k2 == stableKey && ch2.isNotBlank()) {
+                        Log.i(TAG, "[HOLD] channel arrived after retry=$holdAttempts -> cache now")
+                        holdStableKey = null
+                        holdRunnable = null
+                        onVideoConfirmed(latest) // 이제 ch2가 있으므로 캐시에 저장됨
                         return
                     }
                 }
 
                 if (holdAttempts >= HOLD_MAX_TRIES) {
-                    Log.w(TAG, "[HOLD] channel still empty after $HOLD_MAX_TRIES tries -> give up (no send)")
-                    cancelHold()
+                    Log.w(TAG, "[HOLD] still empty after $HOLD_MAX_TRIES tries -> give up (no cache)")
+                    holdStableKey = null
+                    holdRunnable = null
                     return
                 }
 
@@ -300,24 +232,16 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         mainHandler.postDelayed(r, HOLD_RETRY_MS)
     }
 
-    private fun cancelHold() {
-        holdRunnable?.let { mainHandler.removeCallbacks(it) }
-        holdRunnable = null
-        holdKey = null
-        holdAttempts = 0
-    }
-
     /**
-     * ✅ key는 channel 포함하면 HOLD 중에 key가 바뀌어서 매칭이 깨질 수 있음.
-     * 따라서 "title+duration" 같이 channel과 무관한 값으로 고정.
+     * stableKey는 channel이 늦게 와도 변하지 않게 해야 한다.
+     * 그래서 title + duration만 사용한다.
      */
-    private fun buildVideoKey(info: NowPlayingInfo): String {
+    private fun buildStableKey(info: NowPlayingInfo): String {
         val t = normalize(info.title)
         val d = info.durationMs?.let { (it / 1000L) } ?: -1L
         return "$t|$d"
     }
 
-    private fun normalize(s: String): String {
-        return s.lowercase().replace(Regex("\\s+"), " ").trim()
-    }
+    private fun normalize(s: String): String =
+        s.lowercase().replace(Regex("\\s+"), " ").trim()
 }
