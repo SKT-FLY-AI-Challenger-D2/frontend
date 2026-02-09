@@ -52,7 +52,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // 에뮬레이터 기준. 실기기는 PC LAN IP로 바꿔야 함.
-    private val backend = BackendClient("http://10.0.2.2:8000/")
+    private val backend = BackendClient("http://10.0.2.2:8000/", useFake = true)
 
     private val renderer: AlertRenderer by lazy { OverlayAlertRenderer(applicationContext) }
 
