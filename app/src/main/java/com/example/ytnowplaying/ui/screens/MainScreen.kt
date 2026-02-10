@@ -106,7 +106,7 @@ private fun TopBar() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "XXX AI",
+                text = "REALLY AI",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = Color(0xFF111111)
             )

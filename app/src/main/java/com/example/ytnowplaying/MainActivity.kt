@@ -11,7 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-private const val TAG = "XXX_AI"
+private const val TAG = "REALLY_AI"
 
 class MainActivity : ComponentActivity() {
 

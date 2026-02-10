@@ -1,6 +1,8 @@
 package com.example.ytnowplaying.nav
 
 object Routes {
+    const val Splash = "splash"
+
     const val Start = "start"
     const val Permission1 = "permission_step_1"
     const val Permission2 = "permission_step_2"

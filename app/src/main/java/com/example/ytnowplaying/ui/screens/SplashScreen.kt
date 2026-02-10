@@ -2,10 +2,7 @@ package com.example.ytnowplaying.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,31 +13,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
 
 @Composable
-fun StartScreen(
-    onStart: () -> Unit
-) {
-    // 스크린샷 기준: 위(블루) -> 아래(퍼플) 그라데이션
+fun SplashScreen() {
     val topBlue = Color(0xFF3872FE)
     val bottomPurple = Color(0xFF9216FA)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(topBlue, bottomPurple)
-                )
-            )
+            .background(Brush.verticalGradient(colors = listOf(topBlue, bottomPurple)))
             .padding(horizontal = 24.dp)
     ) {
-        // 중앙 컨텐츠
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(bottom = 40.dp), // 버튼이 하단에 있어서 시각적 중심 보정
+                .padding(bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
@@ -71,24 +59,13 @@ fun StartScreen(
                 lineHeight = 26.sp,
                 style = MaterialTheme.typography.bodyLarge
             )
-        }
 
-        // 하단 버튼(필 형태)
-        Button(
-            onClick = onStart,
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-            shape = RoundedCornerShape(999.dp),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 72.dp)
-                .width(220.dp)
-                .height(56.dp)
-        ) {
-            Text(
-                text = "시작하기",
-                color = Color(0xFF7A2AFB), // 보라 톤 텍스트
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
+            Spacer(Modifier.height(28.dp))
+
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(28.dp)
             )
         }
     }

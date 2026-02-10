@@ -33,7 +33,7 @@ import android.graphics.Typeface
 class FloatingButtonService : Service() {
 
     companion object {
-        private const val TAG = "XXX_AI"
+        private const val TAG = "REALLY_AI"
         private const val EXTRA_OPEN_REPORT = "open_report" // (현재 미사용이어도 둬도 됨)
     }
 

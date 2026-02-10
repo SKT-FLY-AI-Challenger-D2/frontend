@@ -4,19 +4,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ytnowplaying.AppContainer
+import com.example.ytnowplaying.permissions.PermissionChecker
+import com.example.ytnowplaying.prefs.OnboardingPrefs
 import com.example.ytnowplaying.ui.screens.IntroScreen
 import com.example.ytnowplaying.ui.screens.MainScreen
 import com.example.ytnowplaying.ui.screens.PermissionStep1Screen
 import com.example.ytnowplaying.ui.screens.PermissionStep2Screen
 import com.example.ytnowplaying.ui.screens.ReportHistoryScreen
 import com.example.ytnowplaying.ui.screens.ReportScreen
+import com.example.ytnowplaying.ui.screens.SplashScreen
 import com.example.ytnowplaying.ui.screens.StartScreen
+import kotlinx.coroutines.delay
 
 @Composable
 fun AppNavHost(
@@ -26,23 +31,54 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
 
-    // ✅ NavHost의 startDestination은 “첫 구성 시점”에만 결정하고 이후엔 바꾸지 않는 게 안전함.
-    //    - cold start: reportId가 있으면 Report로 바로 시작
-    //    - warm start(onNewIntent): 아래 LaunchedEffect가 Report로 이동
+    // startDestination은 첫 구성 시점에만 결정
     val startDestination = rememberSaveable {
         val id = initialOpenReportId?.takeIf { it.isNotBlank() }
-        if (id != null) Routes.report(id) else Routes.Start
+        if (id != null) Routes.report(id) else Routes.Splash
     }
 
-    // ✅ 중복 네비게이션 방지용(특히 onNewIntent 연속 호출/재구성 시)
     val lastHandledReportId = rememberSaveable { mutableStateOf<String?>(null) }
 
     NavHost(
         navController = navController,
         startDestination = startDestination
     ) {
+        composable(Routes.Splash) {
+            val ctx = LocalContext.current
+
+            // 로딩 화면을 항상 1번 보여주고 여기서 다음 화면 결정
+            LaunchedEffect(Unit) {
+                // 너무 짧으면 Splash가 안 보일 수 있어 최소 지연(원하면 조절)
+                delay(500L) // 조절 가능
+
+                val next = if (!OnboardingPrefs.isDone(ctx)) {
+                    Routes.Start
+                } else {
+                    when {
+                        !PermissionChecker.hasNotificationListenerAccess(ctx) -> Routes.Permission1
+                        !PermissionChecker.hasOverlayPermission(ctx) -> Routes.Permission2
+                        else -> Routes.Main
+                    }
+                }
+
+                navController.navigate(next) {
+                    popUpTo(Routes.Splash) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+
+            SplashScreen()
+        }
+
         composable(Routes.Start) {
-            StartScreen(onStart = { navController.navigate(Routes.Permission1) })
+            StartScreen(
+                onStart = {
+                    navController.navigate(Routes.Permission1) {
+                        // Start로 뒤로가기 복귀 방지(“튜토리얼 후 Start 재진입” 원천 차단)
+                        popUpTo(Routes.Start) { inclusive = true }
+                    }
+                }
+            )
         }
 
         composable(Routes.Permission1) {
@@ -66,10 +102,15 @@ fun AppNavHost(
         }
 
         composable(Routes.Intro) {
+            val ctx = LocalContext.current
             IntroScreen(
                 onNext = {
+                    // 튜토리얼 완료 플래그 저장
+                    OnboardingPrefs.setDone(ctx, true)
+
                     navController.navigate(Routes.Main) {
                         popUpTo(Routes.Intro) { inclusive = true }
+                        launchSingleTop = true
                     }
                 }
             )
@@ -104,7 +145,7 @@ fun AppNavHost(
         }
     }
 
-    // ✅ 오버레이/Intent로 reportId가 들어오면 언제든 Report로 강제 이동
+    // 오버레이/Intent로 reportId가 들어오면 언제든 Report로 강제 이동
     LaunchedEffect(initialOpenReportId, initialFromOverlay) {
         val id = initialOpenReportId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (lastHandledReportId.value == id) return@LaunchedEffect
@@ -112,10 +153,8 @@ fun AppNavHost(
 
         navController.navigate(Routes.report(id)) {
             launchSingleTop = true
-
-            // 오버레이에서 들어온 경우, 뒤로가기 시 Start로 돌아가는 걸 원천 차단하고 싶으면 유지
             if (initialFromOverlay) {
-                popUpTo(Routes.Start) { inclusive = true }
+                popUpTo(navController.graph.startDestinationId) { inclusive = true }
             }
         }
     }
