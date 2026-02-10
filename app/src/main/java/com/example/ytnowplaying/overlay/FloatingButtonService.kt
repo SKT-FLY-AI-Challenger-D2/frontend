@@ -2,14 +2,19 @@ package com.example.ytnowplaying.overlay
 
 import android.app.Service
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.Toast
+import androidx.core.view.ViewCompat
+import com.example.ytnowplaying.MainActivity
 import com.example.ytnowplaying.data.BackendClient
 import com.example.ytnowplaying.nowplaying.NowPlayingCache
 import com.example.ytnowplaying.render.OverlayAlertRenderer
@@ -20,15 +25,21 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.example.ytnowplaying.MainActivity
+import android.view.View
+import android.widget.TextView
+import android.graphics.Typeface
+
+
 class FloatingButtonService : Service() {
 
     companion object {
-        private const val EXTRA_OPEN_REPORT = "open_report"
+        private const val TAG = "XXX_AI"
+        private const val EXTRA_OPEN_REPORT = "open_report" // (현재 미사용이어도 둬도 됨)
     }
 
     private val wm by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
-    private var buttonView: ImageView? = null
+    // 기존: private var buttonView: ImageView? = null
+    private var buttonView: View? = null
     private var added = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -36,9 +47,8 @@ class FloatingButtonService : Service() {
     // 백엔드 (에뮬레이터 기준)
     private val backend = BackendClient("http://10.0.2.2:8000/")
 
-    // 경고 오버레이 (✅ onTap은 생성자에 넣지 말고 showWarning에서 넣는다)
+    // 경고 오버레이
     private val alertRenderer by lazy {
-        // 생성자 시그니처에 맞게: (Context, autoDismissMs) 형태라면 아래처럼 사용
         OverlayAlertRenderer(
             appCtx = applicationContext,
             autoDismissMs = 8_000L
@@ -49,14 +59,15 @@ class FloatingButtonService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        android.util.Log.i("XXX_AI", "FloatingButtonService onCreate")
+        android.util.Log.i(TAG, "FloatingButtonService onCreate")
 
         if (!Settings.canDrawOverlays(this)) {
-            android.util.Log.w("XXX_AI", "No overlay permission -> stopSelf")
+            android.util.Log.w(TAG, "No overlay permission -> stopSelf")
             Toast.makeText(this, "오버레이 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
             stopSelf()
             return
         }
+
         addFloatingButton()
     }
 
@@ -66,48 +77,68 @@ class FloatingButtonService : Service() {
         super.onDestroy()
     }
 
+    private fun dp(v: Int): Int =
+        TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            v.toFloat(),
+            resources.displayMetrics
+        ).toInt()
+
     private fun addFloatingButton() {
-        android.util.Log.i("XXX_AI", "addFloatingButton called")
+        android.util.Log.i(TAG, "addFloatingButton called")
 
         // 이미 attach 되어있으면(added 플래그가 꼬여도) 재추가 금지
         buttonView?.let { existing ->
             if (existing.isAttachedToWindow) {
                 added = true
-                android.util.Log.i("XXX_AI", "buttonView already attached -> skip")
+                android.util.Log.i(TAG, "buttonView already attached -> skip")
                 return
             }
         }
 
-        // 재진입 방지(핵심): addView 전에 먼저 잠금
+        // 재진입 방지
         if (added) {
-            android.util.Log.i("XXX_AI", "already added flag -> skip")
+            android.util.Log.i(TAG, "already added flag -> skip")
             return
         }
         added = true
 
-        val iv = android.widget.ImageView(this).apply {
-            // 가시성 확보용(임시)
-            setImageResource(android.R.drawable.ic_dialog_alert)
-            setPadding(18, 18, 18, 18)
-            setBackgroundColor(0xCC111111.toInt())
+        // addFloatingButton() 안의 iv 생성부를 이걸로 교체
+        val tv = TextView(this).apply {
+            text = "🔍"
+            // 이모지는 폰트별로 크기 체감이 달라서 SP를 조금 키우는 게 보통 좋음
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+
+            // 원형 그라데이션 배경은 동일
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(
+                    0xFF4F8DF7.toInt(),
+                    0xFF6E56CF.toInt()
+                )
+            ).apply { shape = GradientDrawable.OVAL }
+
+            val p = dp(18)
+            setPadding(p, p, p, p)
+
+            ViewCompat.setElevation(this, dp(10).toFloat())
             setOnClickListener { onButtonClicked() }
         }
 
-        buttonView = iv
+        buttonView = tv
 
         try {
-            wm.addView(iv, buildButtonLayoutParams())
-            android.util.Log.i("XXX_AI", "wm.addView OK")
+            wm.addView(tv, buildButtonLayoutParams())
+            android.util.Log.i(TAG, "wm.addView OK")
         } catch (t: Throwable) {
-            android.util.Log.e("XXX_AI", "wm.addView FAILED", t)
-
-            // 실패 시 롤백(다음에 다시 시도 가능하게)
+            android.util.Log.e(TAG, "wm.addView FAILED", t)
             added = false
             buttonView = null
-
-            // 혹시 반쯤 붙은 케이스까지 정리 시도
-            runCatching { wm.removeViewImmediate(iv) }
+            runCatching { wm.removeViewImmediate(tv) }
         }
+
     }
 
     private fun removeFloatingButton() {
@@ -121,7 +152,6 @@ class FloatingButtonService : Service() {
             buttonView = null
         }
     }
-
 
     private fun openReportFromOverlay(
         reportId: String,
@@ -140,7 +170,6 @@ class FloatingButtonService : Service() {
         startActivity(i)
     }
 
-
     private fun onButtonClicked() {
         val snap = NowPlayingCache.get()
         if (snap == null) {
@@ -149,6 +178,7 @@ class FloatingButtonService : Service() {
         }
 
         scope.launch {
+            // 요구사항: 버튼 누르면 잠시 후 딜레이
             delay(700L)
 
             // 여기서만 백엔드 전송
@@ -160,12 +190,13 @@ class FloatingButtonService : Service() {
                 )
             }.getOrNull()
 
-            // ✅ 여기서 alertText를 “반드시” 만든다
+            // ✅ report 화면에 넘길 텍스트(임시): 백엔드 응답 없으면 기본 문구
             val alertText: String = resultText?.takeIf { it.isNotBlank() }
                 ?: "! 영상에 문제가 있습니다"
 
             withContext(Dispatchers.Main) {
-                // ✅ 오버레이 문구 고정 + 탭하면 앱 열기
+                // 오버레이 표시(문구는 요구사항 고정)
+                // 탭하면 앱 열고 Report로 이동(임시 reportId=demo)
                 alertRenderer.showWarning("! 영상에 문제가 있습니다") {
                     openReportFromOverlay(reportId = "demo", alertText = alertText)
                 }
@@ -189,8 +220,8 @@ class FloatingButtonService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL // ✅ 오른쪽 중간
-            x = 24
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL // 오른쪽 중간
+            x = dp(24)
             y = 0
         }
     }

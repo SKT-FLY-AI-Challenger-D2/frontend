@@ -1,4 +1,4 @@
-    plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     // Kotlin 2.0+에서는 Compose Compiler Gradle plugin 사용 권장 :contentReference[oaicite:1]{index=1}
@@ -15,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -52,6 +53,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
 
 }

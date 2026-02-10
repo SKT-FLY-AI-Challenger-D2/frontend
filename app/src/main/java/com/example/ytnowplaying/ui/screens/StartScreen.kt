@@ -2,8 +2,10 @@ package com.example.ytnowplaying.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -11,45 +13,83 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 @Composable
 fun StartScreen(
     onStart: () -> Unit
 ) {
-    // PDF 근거: 그라데이션 배경 + 큰 타이틀 + “시작하기” 버튼 구조
+    // 스크린샷 기준: 위(블루) -> 아래(퍼플) 그라데이션
+    val topBlue = Color(0xFF3872FE)
+    val bottomPurple = Color(0xFF9216FA)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF6E56CF), Color(0xFF4F8DF7))
+                    colors = listOf(topBlue, bottomPurple)
                 )
             )
-            .padding(24.dp)
+            .padding(horizontal = 24.dp)
     ) {
+        // 중앙 컨텐츠
         Column(
-            modifier = Modifier.align(Alignment.Center),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 40.dp), // 버튼이 하단에 있어서 시각적 중심 보정
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("XXX AI!", color = Color.White, fontSize = 44.sp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "PDF 근거 없음: 임시 처리",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 14.sp
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onStart,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
-                Text("시작하기", color = Color.Black, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = "✦",
+                    color = Color.White,
+                    fontSize = 56.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "XXX AI!",
+                    color = Color.White,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
+
+            Spacer(Modifier.height(18.dp))
+
+            Text(
+                text = "영상의 진위를 검증하는\n스마트 AI 도우미",
+                color = Color.White.copy(alpha = 0.90f),
+                fontSize = 18.sp,
+                lineHeight = 26.sp,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+
+        // 하단 버튼(필 형태)
+        Button(
+            onClick = onStart,
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(999.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 72.dp)
+                .width(220.dp)
+                .height(56.dp)
+        ) {
+            Text(
+                text = "시작하기",
+                color = Color(0xFF7A2AFB), // 보라 톤 텍스트
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }

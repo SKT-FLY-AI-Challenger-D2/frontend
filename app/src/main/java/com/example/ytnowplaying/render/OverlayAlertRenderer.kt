@@ -2,6 +2,7 @@ package com.example.ytnowplaying.render
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -10,6 +11,8 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -23,9 +26,12 @@ class OverlayAlertRenderer(
     private val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val main = Handler(Looper.getMainLooper())
 
-    private var rootView: View? = null
-    private var textView: TextView? = null
-    private var closeView: TextView? = null
+    private var rootView: View? = null              // full-screen dim layer
+    private var cardView: View? = null              // white card
+    private var titleView: TextView? = null         // red title
+    private var bodyView: TextView? = null          // gray description
+    private var actionView: TextView? = null        // "탭하여 보고서 보기"
+    private var closeView: TextView? = null         // X button
     private var isAdded = false
 
     private var lastOnTap: (() -> Unit)? = null
@@ -40,15 +46,30 @@ class OverlayAlertRenderer(
         lastOnTap = onTap
         ensureView()
 
-        textView?.text = text
+        // 제목: 호출 측에서 넘긴 문구를 그대로 사용
+        titleView?.text = text
 
-        // 탭 동작: onTap 있으면 실행, 없으면 닫기
-        rootView?.setOnClickListener {
+        // 본문: 디자인 스샷 기준 문구(필요하면 여기만 바꾸면 됨)
+        bodyView?.text =
+            "이 영상은 조작되었을 가능성이 있습니다.\n자세한 분석 결과를 확인하세요."
+
+        // 딤 영역 탭: 닫기 (모달 UX)
+        rootView?.setOnClickListener { clearWarning() }
+
+        cardView?.setOnClickListener {
             val cb = lastOnTap
-            if (cb != null) cb() else clearWarning()
+            clearWarning()              // ✅ 먼저 닫기
+            cb?.invoke()                // 그 다음 이동
         }
 
-        // 닫기(X)는 항상 닫기
+        // 하단 문구도 동일
+        actionView?.setOnClickListener {
+            val cb = lastOnTap
+            clearWarning()              // ✅ 먼저 닫기
+            cb?.invoke()
+        }
+
+        // X 버튼: 항상 닫기
         closeView?.setOnClickListener { clearWarning() }
 
         if (!isAdded) {
@@ -74,7 +95,7 @@ class OverlayAlertRenderer(
 
         if (!isAdded) return
         try {
-            wm.removeView(rootView)
+            wm.removeViewImmediate(rootView)
         } catch (t: Throwable) {
             Log.w(TAG, "removeView failed: ${t.message}")
         } finally {
@@ -85,32 +106,127 @@ class OverlayAlertRenderer(
     private fun ensureView() {
         if (rootView != null) return
 
-        val container = LinearLayout(appCtx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(32, 24, 32, 24)
-            setBackgroundColor(0xEE111111.toInt())
-            gravity = Gravity.CENTER_VERTICAL
+        // dp helper
+        fun dp(v: Int): Int = (v * appCtx.resources.displayMetrics.density).toInt()
+        fun dpF(v: Float): Float = (v * appCtx.resources.displayMetrics.density)
+
+        // 화면 폭에 맞춰 "오른쪽 스샷처럼 크게" (대략 80% 폭, 최대 340dp)
+        val dm = appCtx.resources.displayMetrics
+        val cardWidthPx = minOf((dm.widthPixels * 0.80f).toInt(), dp(340))
+
+        // 1) 전체 딤 레이어 (풀스크린)
+        val dimRoot = FrameLayout(appCtx).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(0x99000000.toInt()) // dim
+            isClickable = true
         }
 
-        val tv = TextView(appCtx).apply {
-            textSize = 14f
-            setTextColor(0xFFFFFFFF.toInt())
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        // 2) 흰색 카드 (중앙)
+        val card = LinearLayout(appCtx).apply {
+            orientation = LinearLayout.VERTICAL
+            val padH = dp(20)
+            val padV = dp(18)
+            setPadding(padH, padV, padH, padV)
+
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpF(18f)
+                setColor(0xFFFFFFFF.toInt())
+            }
+
+            layoutParams = FrameLayout.LayoutParams(cardWidthPx, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+            }
+            isClickable = true // dimRoot 클릭과 분리
+        }
+
+        // 상단: X 버튼 영역(우측 상단)
+        val topRow = FrameLayout(appCtx).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
 
         val x = TextView(appCtx).apply {
-            text = "✕" // 리소스 없이 닫기
-            textSize = 18f
-            setTextColor(0xFFFFFFFF.toInt())
-            setPadding(24, 0, 0, 0)
+            text = "✕"
+            textSize = 16f
+            setTextColor(0xFF333333.toInt())
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.END
+            }
+        }
+        topRow.addView(x)
+
+        // 아이콘 원형 배경 + 경고 아이콘
+        val iconCircle = FrameLayout(appCtx).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(18)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x33FF3B30.toInt()) // 연한 빨강(핑크)
+            }
         }
 
-        container.addView(tv)
-        container.addView(x)
+        val icon = ImageView(appCtx).apply {
+            // 시스템 기본 아이콘 사용(리소스 추가 없이)
+            setImageResource(android.R.drawable.ic_dialog_alert)
+            setColorFilter(0xFFFF3B30.toInt())
+            layoutParams = FrameLayout.LayoutParams(dp(28), dp(28)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        iconCircle.addView(icon)
 
-        textView = tv
+        // 제목(빨강)
+        val title = TextView(appCtx).apply {
+            textSize = 22f
+            setTextColor(0xFFFF3B30.toInt())
+            setPadding(0, dp(12), 0, dp(18))
+            gravity = Gravity.CENTER
+            // bold
+            paint.isFakeBoldText = true
+        }
+
+        // 본문(회색)
+        val body = TextView(appCtx).apply {
+            textSize = 13.5f
+            setTextColor(0xFF6B7280.toInt())
+            gravity = Gravity.CENTER
+        }
+
+        // 액션 텍스트(하단)
+        val action = TextView(appCtx).apply {
+            text = "탭하여 보고서 보기"
+            textSize = 12.5f
+            setTextColor(0xFF6B7280.toInt())
+            gravity = Gravity.CENTER
+            setPadding(0, dp(24), 0, dp(12))
+        }
+
+        card.addView(topRow)
+        card.addView(iconCircle)
+        card.addView(title)
+        card.addView(body)
+        card.addView(action)
+
+        dimRoot.addView(card)
+
+        rootView = dimRoot
+        cardView = card
         closeView = x
-        rootView = container
+        titleView = title
+        bodyView = body
+        actionView = action
     }
 
     private fun buildLayoutParams(): WindowManager.LayoutParams {
@@ -123,14 +239,13 @@ class OverlayAlertRenderer(
 
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.MATCH_PARENT, // ✅ 풀스크린 딤 + 중앙 카드
             type,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP
+            gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
         }
