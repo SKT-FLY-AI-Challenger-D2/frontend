@@ -12,9 +12,9 @@ class BackendClient(baseUrl: String) {
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .callTimeout(240, TimeUnit.SECONDS)
         .build()
 
     private val retrofit = Retrofit.Builder()

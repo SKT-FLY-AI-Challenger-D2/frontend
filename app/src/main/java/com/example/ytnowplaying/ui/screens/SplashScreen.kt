@@ -43,7 +43,7 @@ fun SplashScreen() {
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    text = "REALLY AI!",
+                    text = "REALLY AI",
                     color = Color.White,
                     fontSize = 40.sp,
                     fontWeight = FontWeight.SemiBold
