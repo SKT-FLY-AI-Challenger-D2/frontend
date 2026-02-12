@@ -27,8 +27,17 @@ class MainActivity : ComponentActivity() {
     private var initialFromOverlay by mutableStateOf(false)
     private var initialAlertText by mutableStateOf<String?>(null)
 
+
+    private fun dumpOverlayIntent(tag: String, i: Intent?) {
+        val id = i?.getStringExtra(EXTRA_OPEN_REPORT_ID)
+        val from = i?.getBooleanExtra(EXTRA_FROM_OVERLAY, false)
+        val alertLen = i?.getStringExtra(EXTRA_ALERT_TEXT)?.length ?: 0
+        android.util.Log.d("REALY_AI", "[$tag] openReportId=$id fromOverlay=$from alertLen=$alertLen")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dumpOverlayIntent("ACT-onCreate", intent)
         consumeIntent(intent)
 
         setContent {
@@ -42,12 +51,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        dumpOverlayIntent("ACT-onNewIntent", intent)
         consumeIntent(intent)
     }
 
     private fun consumeIntent(i: Intent) {
+        // ✅ 오버레이로 "보고서 열기" 인텐트가 아니면 상태를 덮어쓰지 않는다
+        if (!i.hasExtra(EXTRA_OPEN_REPORT_ID)) {
+            dumpOverlayIntent("ACT-ignoreIntent", i)
+            return
+        }
+
         initialOpenReportId = i.getStringExtra(EXTRA_OPEN_REPORT_ID)
         initialFromOverlay = i.getBooleanExtra(EXTRA_FROM_OVERLAY, false)
         initialAlertText = i.getStringExtra(EXTRA_ALERT_TEXT)
     }
+
 }

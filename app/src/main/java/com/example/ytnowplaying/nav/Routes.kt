@@ -16,4 +16,6 @@ object Routes {
     const val Report = "report"
     const val ReportArgId = "reportId"
     fun report(reportId: String) = "$Report/$reportId"
+
+    const val Tutorial = "tutorial"
 }

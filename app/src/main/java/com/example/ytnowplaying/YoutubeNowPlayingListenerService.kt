@@ -11,6 +11,8 @@ import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
 import com.example.ytnowplaying.data.BackendClient
+import com.example.ytnowplaying.data.report.Report
+import com.example.ytnowplaying.data.report.Severity
 import com.example.ytnowplaying.nowplaying.NowPlayingCache
 import com.example.ytnowplaying.overlay.OverlayController
 import com.example.ytnowplaying.prefs.ModePrefs
@@ -21,6 +23,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
+import kotlin.math.roundToInt
 
 private const val TAG = "YTNowPlaying"
 
@@ -69,7 +73,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     // ===== 버튼 표시/숨김 상태 머신(핵심) =====
     private var isButtonShown = false
     private var stopButtonRunnable: Runnable? = null
-    private val STOP_BUTTON_GRACE_MS = 1_000L  // 3~5초 추천
+    private val STOP_BUTTON_GRACE_MS = 1_000L  // ✅ 1초 후 꺼짐
 
     private fun updateFloatingButton(youtubeActive: Boolean) {
         // 백그라운드 모드면 버튼은 항상 꺼짐
@@ -103,7 +107,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
             if (!isButtonShown) {
                 Log.d(TAG, "[BTN] youtubeActive=true -> start button")
-                OverlayController.start(applicationContext) // ★ 반드시 idempotent여야 함
+                OverlayController.start(applicationContext) // idempotent 전제
                 isButtonShown = true
             }
         } else {
@@ -134,9 +138,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         }
 
         override fun onPlaybackStateChanged(state: PlaybackState?) {
-            // 선택: "유튜브가 실제로 재생 중일 때만 버튼" 원하면 아래로 바꿔도 됨.
-            // val active = (state?.state == PlaybackState.STATE_PLAYING || state?.state == PlaybackState.STATE_BUFFERING)
-            // updateFloatingButton(active)
+            // 필요 시 "재생 중일 때만 버튼"로 변경 가능
         }
     }
 
@@ -294,6 +296,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             Log.i(TAG, "[CACHED] stableKey=$stableKey title='${info.title.take(60)}' channel='${ch.take(40)}'")
         }
 
+        // 자동 분석은 백그라운드 모드에서만
         if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return
 
         val now2 = android.os.SystemClock.elapsedRealtime()
@@ -306,33 +309,93 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         latestSendingKey = stableKey
 
         scope.launch {
-            val resultText: String? = try {
-                backend.search(
-                    videoKey = stableKey,
+            val apiRes = try {
+                backend.analyze(
                     title = info.title,
                     channel = ch,
                     duration = info.duration
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "[Backend] search failed", e)
+                Log.e(TAG, "[Backend] analyze failed", e)
                 null
             }
 
-            val finalText = resultText?.trim().orEmpty()
+            if (apiRes == null) {
+                withContext(Dispatchers.Main) {
+                    if (latestSendingKey != stableKey) return@withContext
+                    if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return@withContext
+                    renderer.clearWarning()
+                }
+                return@launch
+            }
+
+            val severity = when (apiRes.finalRiskLevel ?: 1) {
+                2 -> Severity.DANGER
+                1 -> Severity.CAUTION
+                0 -> Severity.SAFE
+                else -> Severity.CAUTION
+            }
+
+            val scorePercent = ((apiRes.finalScore ?: 0f) * 100f)
+                .roundToInt()
+                .coerceIn(0, 100)
+
+
+            val summary = apiRes.shortReport?.trim().orEmpty()
+
+            val detail = apiRes.analysisReport?.trim().orEmpty()
+                .ifBlank { summary }
+
+
+            val dangerEvidence =
+                if (severity == Severity.SAFE) emptyList()
+                else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
+
+            val reportId = UUID.randomUUID().toString()
+            val report = Report(
+                id = reportId,
+                detectedAtEpochMs = System.currentTimeMillis(),
+                title = info.title,
+                channel = ch,
+                durationSec = info.duration,
+                scorePercent = scorePercent,
+                severity = severity,
+                dangerEvidence = dangerEvidence,
+                summary = summary,
+                detail = detail
+            )
 
             withContext(Dispatchers.Main) {
                 if (latestSendingKey != stableKey) return@withContext
                 if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return@withContext
 
-                if (finalText.isBlank()) renderer.clearWarning()
-                else renderer.showWarning("! 영상에 문제가 있습니다") {
-                    openReportFromOverlay(reportId = "demo", alertText = finalText)
+                Log.d(TAG, "[SAVE] stableKey=$stableKey reportId=$reportId severity=$severity score=$scorePercent " +
+                        "summary='${summary.take(80)}'")
+
+                AppContainer.reportRepository.saveReport(report)
+
+                Log.d(TAG, "[SAVE-DONE] reportId=$reportId stableKey=$stableKey")
+
+                if (severity == Severity.SAFE) {
+                    renderer.clearWarning()
+                    return@withContext
+                }
+
+                Log.d(TAG, "[WARN-SHOW] reportId=$reportId stableKey=$stableKey")
+                renderer.showWarning(
+                    title = "! 영상에 문제가 있습니다",
+                    bodyLead = summary
+                ) {
+                    Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
+                    openReportFromOverlay(reportId = reportId, alertText = summary)
                 }
             }
+
         }
     }
 
     private fun openReportFromOverlay(reportId: String, alertText: String?) {
+        Log.d(TAG, "[OPEN] reportId=$reportId fromOverlay=true alertLen=${(alertText ?: "").length}")
         val i = Intent(this, MainActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -341,7 +404,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             )
             putExtra(MainActivity.EXTRA_OPEN_REPORT_ID, reportId)
             putExtra(MainActivity.EXTRA_FROM_OVERLAY, true)
-            putExtra(MainActivity.EXTRA_ALERT_TEXT, alertText ?: "! 영상에 문제가 있습니다")
+            putExtra(MainActivity.EXTRA_ALERT_TEXT, alertText ?: "")
         }
         startActivity(i)
     }

@@ -281,9 +281,9 @@ private fun ReportRow(
 @Composable
 private fun SeverityIcon(severity: Severity) {
     val (bg, fg, symbol) = when (severity) {
-        Severity.HIGH -> Triple(Color(0xFFFFE4E6), Color(0xFFDC2626), "⚠")
-        Severity.MEDIUM -> Triple(Color(0xFFFFEDD5), Color(0xFFEA580C), "!")
-        Severity.LOW -> Triple(Color(0xFFDCFCE7), Color(0xFF16A34A), "✓")
+        Severity.DANGER -> Triple(Color(0xFFFFE4E6), Color(0xFFDC2626), "⚠")
+        Severity.CAUTION -> Triple(Color(0xFFFFEDD5), Color(0xFFEA580C), "!")
+        Severity.SAFE -> Triple(Color(0xFFDCFCE7), Color(0xFF16A34A), "✓")
     }
 
     Box(
@@ -300,9 +300,9 @@ private fun SeverityIcon(severity: Severity) {
 @Composable
 private fun SeverityChip(severity: Severity) {
     val (label, bg, fg) = when (severity) {
-        Severity.HIGH -> Triple("위험도: 높음", Color(0xFFFFE4E6), Color(0xFFDC2626))
-        Severity.MEDIUM -> Triple("위험도: 중간", Color(0xFFFFEDD5), Color(0xFFEA580C))
-        Severity.LOW -> Triple("위험도: 낮음", Color(0xFFDCFCE7), Color(0xFF16A34A))
+        Severity.DANGER -> Triple("위험도: 위험", Color(0xFFFFE4E6), Color(0xFFDC2626))
+        Severity.CAUTION -> Triple("위험도: 주의", Color(0xFFFFEDD5), Color(0xFFEA580C))
+        Severity.SAFE -> Triple("위험도: 안전", Color(0xFFDCFCE7), Color(0xFF16A34A))
     }
 
     Box(

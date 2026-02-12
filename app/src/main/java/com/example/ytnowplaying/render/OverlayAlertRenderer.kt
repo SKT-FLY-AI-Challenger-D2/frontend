@@ -37,7 +37,11 @@ class OverlayAlertRenderer(
     private var lastOnTap: (() -> Unit)? = null
     private val removeRunnable = Runnable { clearWarning() }
 
-    override fun showWarning(text: String, onTap: (() -> Unit)?) {
+    override fun showWarning(
+        title: String,
+        bodyLead: String?,
+        onTap: (() -> Unit)?
+    ) {
         if (!Settings.canDrawOverlays(appCtx)) {
             Log.w(TAG, "No overlay permission.")
             return
@@ -46,12 +50,13 @@ class OverlayAlertRenderer(
         lastOnTap = onTap
         ensureView()
 
-        // 제목: 호출 측에서 넘긴 문구를 그대로 사용
-        titleView?.text = text
+        // 제목
+        titleView?.text = title
 
-        // 본문: 디자인 스샷 기준 문구(필요하면 여기만 바꾸면 됨)
-        bodyView?.text =
-            "이 영상은 조작되었을 가능성이 있습니다.\n자세한 분석 결과를 확인하세요."
+        // 본문(선제 요약 1줄 + 안내 1줄)
+        val lead = bodyLead?.trim().takeIf { !it.isNullOrBlank() }
+            ?: "이 영상은 조작되었을 가능성이 있습니다."
+        bodyView?.text = "$lead\n자세한 분석 결과를 확인하세요."
 
         // 딤 영역 탭: 닫기 (모달 UX)
         rootView?.setOnClickListener { clearWarning() }

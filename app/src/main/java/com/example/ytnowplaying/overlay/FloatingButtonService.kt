@@ -11,12 +11,16 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.ViewCompat
+import com.example.ytnowplaying.AppContainer
 import com.example.ytnowplaying.MainActivity
 import com.example.ytnowplaying.data.BackendClient
+import com.example.ytnowplaying.data.report.Report
+import com.example.ytnowplaying.data.report.Severity
 import com.example.ytnowplaying.nowplaying.NowPlayingCache
 import com.example.ytnowplaying.render.OverlayAlertRenderer
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +30,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.view.View
+import java.util.UUID
+import kotlin.math.roundToInt
 
 class FloatingButtonService : Service() {
 
@@ -52,7 +57,6 @@ class FloatingButtonService : Service() {
     }
 
     private val autoStopRunnable = Runnable {
-        // 버튼이 안 떠있으면 서비스 종료(리소스 정리)
         if (!added) stopSelf()
     }
 
@@ -61,7 +65,7 @@ class FloatingButtonService : Service() {
     override fun onCreate() {
         super.onCreate()
         android.util.Log.i(TAG, "FloatingButtonService onCreate")
-        // 여기서 add하지 말고, onStartCommand에서 action에 따라 show/hide
+        // onStartCommand의 action(show/hide)로만 제어
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -107,7 +111,6 @@ class FloatingButtonService : Service() {
     }
 
     private fun hideButton() {
-        // 경고 모달까지 같이 떠있을 수 있으면 정리(원치 않으면 제거해도 됨)
         runCatching { alertRenderer.clearWarning() }
         removeFloatingButton()
     }
@@ -166,6 +169,7 @@ class FloatingButtonService : Service() {
     }
 
     private fun openReportFromOverlay(reportId: String, alertText: String?) {
+        android.util.Log.d(TAG, "[OPEN] reportId=$reportId fromOverlay=true alertLen=${(alertText ?: "").length}")
         val i = Intent(this, MainActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -174,7 +178,7 @@ class FloatingButtonService : Service() {
             )
             putExtra(MainActivity.EXTRA_OPEN_REPORT_ID, reportId)
             putExtra(MainActivity.EXTRA_FROM_OVERLAY, true)
-            putExtra(MainActivity.EXTRA_ALERT_TEXT, alertText ?: "! 영상에 문제가 있습니다")
+            putExtra(MainActivity.EXTRA_ALERT_TEXT, alertText ?: "")
         }
         startActivity(i)
     }
@@ -187,25 +191,82 @@ class FloatingButtonService : Service() {
         }
 
         scope.launch {
+            // UX: 클릭 후 아주 짧게 텀(기존 유지)
             delay(700L)
 
-            val resultText: String? = runCatching {
-                backend.search(
-                    videoKey = snap.stableKey,
+            val apiRes = runCatching {
+                backend.analyze(
                     title = snap.title,
                     channel = snap.channel,
                     duration = snap.duration
                 )
             }.getOrNull()
 
-            val alertText: String = resultText?.takeIf { it.isNotBlank() }
-                ?: "! 영상에 문제가 있습니다"
+            if (apiRes == null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@FloatingButtonService, "분석 서버 응답을 받지 못했습니다.", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val severity = when (apiRes.finalRiskLevel ?: 1) {
+                2 -> Severity.DANGER
+                1 -> Severity.CAUTION
+                0 -> Severity.SAFE
+                else -> Severity.CAUTION
+            }
+            val scorePercent = ((apiRes.finalScore ?: 0f) * 100f)
+                .roundToInt()
+                .coerceIn(0, 100)
+
+
+            val summary = apiRes.shortReport?.trim().orEmpty()
+
+            val detail = apiRes.analysisReport?.trim().orEmpty()
+                .ifBlank { summary }
+
+
+            val dangerEvidence =
+                if (severity == Severity.SAFE) emptyList()
+                else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
+
+            val reportId = UUID.randomUUID().toString()
+            val report = Report(
+                id = reportId,
+                detectedAtEpochMs = System.currentTimeMillis(),
+                title = snap.title,
+                channel = snap.channel,
+                durationSec = snap.duration,
+                scorePercent = scorePercent,
+                severity = severity,
+                dangerEvidence = dangerEvidence,
+                summary = summary,
+                detail = detail
+            )
 
             withContext(Dispatchers.Main) {
-                alertRenderer.showWarning("! 영상에 문제가 있습니다") {
-                    openReportFromOverlay(reportId = "demo", alertText = alertText)
+                android.util.Log.d(TAG, "[SAVE] reportId=$reportId severity=$severity score=$scorePercent " +
+                        "title='${snap.title.take(40)}' channel='${snap.channel.take(30)}' summary='${report.summary.take(80)}'")
+
+                AppContainer.reportRepository.saveReport(report)
+
+                android.util.Log.d(TAG, "[SAVE-DONE] reportId=$reportId")
+
+                if (severity == Severity.SAFE) {
+                    android.util.Log.d(TAG, "[OPEN-REQ] (SAFE) reportId=$reportId alertLen=${report.summary.length}")
+                    openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                } else {
+                    android.util.Log.d(TAG, "[WARN-SHOW] reportId=$reportId")
+                    alertRenderer.showWarning(
+                        title = "! 영상에 문제가 있습니다",
+                        bodyLead = report.summary
+                    ) {
+                        android.util.Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
+                        openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                    }
                 }
             }
+
         }
     }
 

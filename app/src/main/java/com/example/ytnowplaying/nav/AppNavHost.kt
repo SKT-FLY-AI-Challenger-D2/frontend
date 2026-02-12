@@ -3,9 +3,8 @@ package com.example.ytnowplaying.nav
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -21,6 +20,7 @@ import com.example.ytnowplaying.ui.screens.PermissionStep2Screen
 import com.example.ytnowplaying.ui.screens.ReportHistoryScreen
 import com.example.ytnowplaying.ui.screens.ReportScreen
 import com.example.ytnowplaying.ui.screens.SettingsScreen
+import com.example.ytnowplaying.ui.screens.TutorialScreen
 import com.example.ytnowplaying.ui.screens.SplashScreen
 import com.example.ytnowplaying.ui.screens.StartScreen
 import kotlinx.coroutines.delay
@@ -35,13 +35,11 @@ fun AppNavHost(
 
     val initialId = initialOpenReportId?.takeIf { it.isNotBlank() }
 
-    // ✅ NavHost startDestination은 첫 구성 시점에만 결정
-    val startDestination = rememberSaveable {
-        if (initialId != null) Routes.report(initialId) else Routes.Splash
-    }
+    // ✅ startDestination은 "항상 고정" (인자 채운 route를 startDestination으로 쓰면 cold start에서 인자 전달이 깨짐)
+    val startDestination = Routes.Splash
 
-    // ✅ 중복 네비게이션 방지 (cold start에서 report로 시작한 경우도 중복 이동 방지)
-    val lastHandledReportId = rememberSaveable { mutableStateOf<String?>(initialId) }
+    // ✅ 중복 navigate 방지 (saveable로 복원하지 않음)
+    val lastHandledReportId = remember { mutableStateOf<String?>(null) }
 
     NavHost(
         navController = navController,
@@ -51,9 +49,10 @@ fun AppNavHost(
             val ctx = LocalContext.current
 
             LaunchedEffect(Unit) {
-                // 너무 짧으면 Splash가 안 보일 수 있어 최소 지연(원하면 조절)
-                delay(250L)
+                // ✅ 오버레이로 report를 열어야 하는 경우 Splash 자동 네비게이션 금지
+                if (!initialOpenReportId.isNullOrBlank()) return@LaunchedEffect
 
+                delay(500L)
                 val next = if (!OnboardingPrefs.isDone(ctx)) {
                     Routes.Start
                 } else {
@@ -74,9 +73,7 @@ fun AppNavHost(
         }
 
         composable(Routes.Start) {
-            StartScreen(
-                onStart = { navController.navigate(Routes.Permission1) }
-            )
+            StartScreen(onStart = { navController.navigate(Routes.Permission1) })
         }
 
         composable(Routes.Permission1) {
@@ -103,9 +100,7 @@ fun AppNavHost(
             val ctx = LocalContext.current
             IntroScreen(
                 onNext = {
-                    // ✅ 튜토리얼 완료 플래그 저장
                     OnboardingPrefs.setDone(ctx, true)
-
                     navController.navigate(Routes.Main) {
                         popUpTo(Routes.Intro) { inclusive = true }
                         launchSingleTop = true
@@ -138,17 +133,28 @@ fun AppNavHost(
             arguments = listOf(navArgument(Routes.ReportArgId) { type = NavType.StringType })
         ) { backStackEntry ->
             val reportId = backStackEntry.arguments?.getString(Routes.ReportArgId).orEmpty()
+
+            // ✅ 이 reportId가 '오버레이로 전달된 reportId'와 같을 때만 overlay로 간주
+            val launchedFromOverlayThis = (initialFromOverlay && initialOpenReportId == reportId)
+            val alertTextThis = if (launchedFromOverlayThis) initialAlertText else null
+
             ReportScreen(
                 repo = AppContainer.reportRepository,
                 reportId = reportId,
-                launchedFromOverlay = initialFromOverlay,
-                alertText = initialAlertText,
+                launchedFromOverlay = launchedFromOverlayThis,
+                alertText = alertTextThis,
+                onOpenTutorial = { navController.navigate(Routes.Tutorial) },
                 onBack = { navController.popBackStack() }
             )
         }
+
+
+        composable(Routes.Tutorial) {
+            TutorialScreen(onBack = { navController.popBackStack() })
+        }
     }
 
-    // ✅ 오버레이/Intent로 reportId가 들어오면 언제든 Report로 이동 (warm start 포함)
+    // ✅ warm start: onNewIntent로 reportId가 바뀌면 Report로 이동
     LaunchedEffect(initialOpenReportId, initialFromOverlay) {
         val id = initialOpenReportId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (lastHandledReportId.value == id) return@LaunchedEffect
@@ -156,11 +162,7 @@ fun AppNavHost(
 
         navController.navigate(Routes.report(id)) {
             launchSingleTop = true
-
-            // 오버레이에서 들어온 경우: 뒤로가기 시 다른 화면으로 돌아가지 않게 스택 정리
-            if (initialFromOverlay) {
-                popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
-            }
+            // ❌ findStartDestination/popUpTo 사용 금지 (이번 크래시 원인)
         }
     }
 }
