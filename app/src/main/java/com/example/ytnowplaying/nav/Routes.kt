@@ -11,6 +11,8 @@ object Routes {
 
     const val ReportHistory = "report_history"
 
+    const val Settings = "settings"
+
     const val Report = "report"
     const val ReportArgId = "reportId"
     fun report(reportId: String) = "$Report/$reportId"

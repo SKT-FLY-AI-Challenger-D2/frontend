@@ -52,6 +52,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("junit:junit:4.13.2")

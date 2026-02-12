@@ -5,7 +5,8 @@ import retrofit2.http.POST
 
 data class SearchRequestDto(
     val title: String,
-    val channel: String
+    val channel: String,
+    val duration: Long?          // ✅ 초 단위
 )
 
 data class SearchResponseDto(
@@ -20,6 +21,6 @@ data class SearchResponseDto(
 )
 
 interface BackendApi {
-    @POST("search")
+    @POST("api/videos/analysis")
     suspend fun searchVideo(@Body request: SearchRequestDto): SearchResponseDto
 }

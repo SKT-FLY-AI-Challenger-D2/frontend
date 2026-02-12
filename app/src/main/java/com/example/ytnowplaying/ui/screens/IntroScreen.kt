@@ -44,7 +44,7 @@ fun IntroScreen(
             Spacer(Modifier.height(120.dp))
 
             Text(
-                text = "REALLY AI와 함께\n안전한 영상 시청",
+                text = "REALY.AI와 함께\n안전한 영상 시청",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF111111),

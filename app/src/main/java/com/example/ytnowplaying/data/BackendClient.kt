@@ -28,11 +28,18 @@ class BackendClient(baseUrl: String) {
     suspend fun search(
         videoKey: String,
         title: String,
-        channel: String
+        channel: String,
+        duration: Long?           // ✅ 초 단위
     ): String? {
-        Log.d(TAG, "[REQ /search] key=$videoKey title='${title.take(60)}' channel='${channel.take(40)}'")
+        Log.d(TAG, "[REQ /search] key=$videoKey title='${title.take(60)}' channel='${channel.take(40)}' duration=$duration")
 
-        val res = api.searchVideo(SearchRequestDto(title = title, channel = channel))
+        val res = api.searchVideo(
+            SearchRequestDto(
+                title = title,
+                channel = channel,
+                duration = duration
+            )
+        )
 
         Log.d(
             TAG,

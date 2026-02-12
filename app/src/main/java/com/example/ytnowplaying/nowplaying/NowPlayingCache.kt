@@ -7,7 +7,7 @@ data class NowPlayingSnapshot(
     val stableKey: String,      // title+duration 기반 (channel 늦게 와도 안정적)
     val title: String,
     val channel: String,        // 채워진 값만 저장
-    val durationMs: Long?,
+    val duration: Long?,         // ✅ 초 단위
     val updatedAtElapsedMs: Long
 )
 
@@ -23,7 +23,7 @@ object NowPlayingCache {
                 stableKey = stableKey,
                 title = info.title,
                 channel = ch,
-                durationMs = info.durationMs,
+                duration = info.duration,
                 updatedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
             )
         )

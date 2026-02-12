@@ -1,6 +1,5 @@
 package com.example.ytnowplaying.ui.screens
 
-import android.content.Context
 import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,7 +29,7 @@ import com.example.ytnowplaying.AppContainer
 import com.example.ytnowplaying.data.report.Report
 import com.example.ytnowplaying.data.report.Severity
 import com.example.ytnowplaying.overlay.OverlayController
-import kotlinx.coroutines.launch
+import com.example.ytnowplaying.prefs.ModePrefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,18 +38,16 @@ import java.util.Locale
 fun MainScreen(
     onOpenHistory: () -> Unit,   // 유지(지금 UI에선 미사용)
     onOpenReport: (String) -> Unit,
+    onOpenSettings: () -> Unit,  // ✅ 추가
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val repo = AppContainer.reportRepository
 
     var reports by remember { mutableStateOf<List<Report>>(emptyList()) }
-    val scope = rememberCoroutineScope()
 
-    // Main 진입 시: 플로팅 버튼 서비스 시작(권한 있을 때)
+    // Main 진입 시: 버튼 모드일 때만 플로팅 버튼 서비스 시작(권한 있을 때)
     LaunchedEffect(Unit) {
-        if (Settings.canDrawOverlays(ctx)) {
-            OverlayController.start(ctx)
-        }
+
         reports = repo.listReports()
     }
 
@@ -59,7 +56,7 @@ fun MainScreen(
             .fillMaxSize()
             .background(Color(0xFFF5F6FA))
     ) {
-        TopBar()
+        TopBar(onOpenSettings = onOpenSettings)
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -69,17 +66,20 @@ fun MainScreen(
             item {
                 MainHeroCard(
                     onAnalyzeClick = {
-                        // “영상 분석하기” 버튼: 현재는 서비스 보장만(백엔드는 플로팅 버튼에서 트리거)
-                        if (Settings.canDrawOverlays(ctx)) {
-                            OverlayController.start(ctx)
+                        // 수동 모드: 플로팅 버튼을 ‘띄우는’ 게 아니라
+                        // 유튜브가 켜져있을 때 NLS가 알아서 띄우게 둔다.
+                        // 여기서는 사용자에게 안내만.
+                        if (!ModePrefs.isBackgroundModeEnabled(ctx)) {
+                            android.widget.Toast
+                                .makeText(ctx, "유튜브에서 영상을 재생 중일 때 오른쪽 버튼을 눌러 분석하세요.", android.widget.Toast.LENGTH_SHORT)
+                                .show()
                         }
                     }
+
                 )
             }
 
-            item {
-                AnalysisHeader(count = reports.size)
-            }
+            item { AnalysisHeader(count = reports.size) }
 
             items(reports, key = { it.id }) { r ->
                 ReportRow(
@@ -92,7 +92,9 @@ fun MainScreen(
 }
 
 @Composable
-private fun TopBar() {
+private fun TopBar(
+    onOpenSettings: () -> Unit
+) {
     Surface(
         tonalElevation = 2.dp,
         shadowElevation = 2.dp,
@@ -101,18 +103,31 @@ private fun TopBar() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(54.dp)
+                .height(64.dp)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "REALLY AI",
+                text = "REALY.AI",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = Color(0xFF111111)
+            )
+
+            Spacer(Modifier.weight(1f))
+
+            Text(
+                text = "⚙️",
+                fontSize = 20.sp,
+                modifier = Modifier
+                    .clickable { onOpenSettings() }
+                    .padding(6.dp)
             )
         }
     }
 }
+
+// 이하(카드/리스트/유틸) 코드는 너가 붙인 그대로 유지
+
 
 @Composable
 private fun MainHeroCard(
