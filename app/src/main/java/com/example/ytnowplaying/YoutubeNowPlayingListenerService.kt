@@ -340,12 +340,10 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 .roundToInt()
                 .coerceIn(0, 100)
 
-
             val summary = apiRes.shortReport?.trim().orEmpty()
 
             val detail = apiRes.analysisReport?.trim().orEmpty()
                 .ifBlank { summary }
-
 
             val dangerEvidence =
                 if (severity == Severity.SAFE) emptyList()
@@ -369,15 +367,18 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 if (latestSendingKey != stableKey) return@withContext
                 if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return@withContext
 
-                Log.d(TAG, "[SAVE] stableKey=$stableKey reportId=$reportId severity=$severity score=$scorePercent " +
-                        "summary='${summary.take(80)}'")
+                Log.d(
+                    TAG,
+                    "[SAVE] stableKey=$stableKey reportId=$reportId severity=$severity score=$scorePercent summary='${summary.take(80)}'"
+                )
 
                 AppContainer.reportRepository.saveReport(report)
 
                 Log.d(TAG, "[SAVE-DONE] reportId=$reportId stableKey=$stableKey")
 
-                if (severity == Severity.SAFE) {
-                    renderer.clearWarning()
+                // ✅ 핵심 변경: 백그라운드 모드에서는 "위험(DANGER)"일 때만 오버레이
+                if (severity != Severity.DANGER) {
+                    renderer.clearWarning()   // CAUTION/SAFE면 기존 경고 있으면 제거
                     return@withContext
                 }
 
@@ -390,7 +391,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                     openReportFromOverlay(reportId = reportId, alertText = summary)
                 }
             }
-
         }
     }
 

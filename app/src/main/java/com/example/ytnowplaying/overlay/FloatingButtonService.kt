@@ -11,8 +11,11 @@ import android.os.Looper
 import android.provider.Settings
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.ViewCompat
@@ -37,23 +40,25 @@ class FloatingButtonService : Service() {
 
     companion object {
         private const val TAG = "REALY_AI"
-        private const val AUTO_STOP_AFTER_HIDE_MS = 30_000L // hide 후 30초 지나면 서비스 정리
+        private const val AUTO_STOP_AFTER_HIDE_MS = 30_000L
     }
 
     private val main = Handler(Looper.getMainLooper())
     private val wm by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
 
     private var buttonView: View? = null
+    private var buttonIcon: TextView? = null
+    private var buttonProgress: ProgressBar? = null
     private var added = false
+
+    @Volatile
+    private var isAnalyzing = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val backend = BackendClient("http://10.0.2.2:8000/")
 
     private val alertRenderer by lazy {
-        OverlayAlertRenderer(
-            appCtx = applicationContext,
-            autoDismissMs = 8_000L
-        )
+        OverlayAlertRenderer(appCtx = applicationContext, autoDismissMs = 8_000L)
     }
 
     private val autoStopRunnable = Runnable {
@@ -65,7 +70,6 @@ class FloatingButtonService : Service() {
     override fun onCreate() {
         super.onCreate()
         android.util.Log.i(TAG, "FloatingButtonService onCreate")
-        // onStartCommand의 action(show/hide)로만 제어
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,6 +91,8 @@ class FloatingButtonService : Service() {
     }
 
     override fun onDestroy() {
+        main.removeCallbacks(autoStopRunnable)
+        setButtonLoading(false) // 안전하게 원복
         hideButton()
         scope.cancel()
         super.onDestroy()
@@ -121,36 +127,83 @@ class FloatingButtonService : Service() {
             return
         }
 
-        val tv = TextView(this).apply {
-            text = "🔍"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-            gravity = Gravity.CENTER
-            includeFontPadding = false
+        val bg = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xFF4F8DF7.toInt(), 0xFF6E56CF.toInt())
+        ).apply { shape = GradientDrawable.OVAL }
 
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(0xFF4F8DF7.toInt(), 0xFF6E56CF.toInt())
-            ).apply { shape = GradientDrawable.OVAL }
+        // ✅ 크기 고정(56dp) 제거: 기존처럼 padding 기반(18dp)으로 크기 결정
+        val container = FrameLayout(this).apply {
+            background = bg
 
-            val p = dp(18)
+            val p = dp(18)          // ✅ 기존 TextView padding과 동일
             setPadding(p, p, p, p)
 
+            isClickable = true
+            isFocusable = false
             ViewCompat.setElevation(this, dp(10).toFloat())
-            setOnClickListener { onButtonClicked() }
+
+            // ✅ 눌림 피드백(로딩 중엔 무시)
+            setOnTouchListener { v, e ->
+                if (isAnalyzing) return@setOnTouchListener false
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.alpha = 0.72f
+                        v.scaleX = 0.96f
+                        v.scaleY = 0.96f
+                    }
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL -> {
+                        v.alpha = 1f
+                        v.scaleX = 1f
+                        v.scaleY = 1f
+                    }
+                }
+                false
+            }
         }
 
+        val icon = TextView(this).apply {
+            text = "🔍"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            includeFontPadding = false
+            setTextColor(0xFFFFFFFF.toInt())
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+        }
+
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+            isIndeterminate = true
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(dp(22), dp(22)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+
+        container.addView(icon)
+        container.addView(progress)
+
+        container.setOnClickListener { onButtonClicked() }
+
         try {
-            wm.addView(tv, buildButtonLayoutParams())
-            buttonView = tv
+            wm.addView(container, buildButtonLayoutParams())
+            buttonView = container
+            buttonIcon = icon
+            buttonProgress = progress
             added = true
             android.util.Log.i(TAG, "wm.addView OK")
         } catch (t: Throwable) {
             android.util.Log.e(TAG, "wm.addView FAILED", t)
             added = false
             buttonView = null
-            runCatching { wm.removeViewImmediate(tv) }
+            buttonIcon = null
+            buttonProgress = null
+            runCatching { wm.removeViewImmediate(container) }
         }
     }
+
 
     private fun removeFloatingButton() {
         val v = buttonView
@@ -165,6 +218,28 @@ class FloatingButtonService : Service() {
         } finally {
             added = false
             buttonView = null
+            buttonIcon = null
+            buttonProgress = null
+            isAnalyzing = false
+        }
+    }
+
+    private fun setButtonLoading(loading: Boolean) {
+        // UI 토글은 메인에서
+        main.post {
+            val v = buttonView ?: return@post
+            val icon = buttonIcon ?: return@post
+            val pb = buttonProgress ?: return@post
+
+            isAnalyzing = loading
+
+            v.isEnabled = !loading
+            v.alpha = if (loading) 0.72f else 1f
+            v.scaleX = 1f
+            v.scaleY = 1f
+
+            icon.visibility = if (loading) View.INVISIBLE else View.VISIBLE
+            pb.visibility = if (loading) View.VISIBLE else View.GONE
         }
     }
 
@@ -184,89 +259,101 @@ class FloatingButtonService : Service() {
     }
 
     private fun onButtonClicked() {
+        // ✅ 중복 클릭 방지
+        if (isAnalyzing) return
+
         val snap = NowPlayingCache.get()
         if (snap == null) {
             Toast.makeText(this, "재생 중인 영상 정보를 아직 못 가져왔습니다.", Toast.LENGTH_SHORT).show()
             return
         }
 
-        scope.launch {
-            // UX: 클릭 후 아주 짧게 텀(기존 유지)
-            delay(700L)
+        // ✅ 클릭 즉시 피드백(돋보기 → 로딩)
+        setButtonLoading(true)
 
-            val apiRes = runCatching {
-                backend.analyze(
+        scope.launch {
+            try {
+                // UX: 기존 유지(짧은 텀)
+                delay(700L)
+
+                val apiRes = runCatching {
+                    backend.analyze(
+                        title = snap.title,
+                        channel = snap.channel,
+                        duration = snap.duration
+                    )
+                }.getOrNull()
+
+                if (apiRes == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@FloatingButtonService, "분석 서버 응답을 받지 못했습니다.", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                val severity = when (apiRes.finalRiskLevel ?: 1) {
+                    2 -> Severity.DANGER
+                    1 -> Severity.CAUTION
+                    0 -> Severity.SAFE
+                    else -> Severity.CAUTION
+                }
+
+                val scorePercent = ((apiRes.finalScore ?: 0f) * 100f)
+                    .roundToInt()
+                    .coerceIn(0, 100)
+
+                val summary = apiRes.shortReport?.trim().orEmpty()
+                val detail = apiRes.analysisReport?.trim().orEmpty().ifBlank { summary }
+
+                val dangerEvidence =
+                    if (severity == Severity.SAFE) emptyList()
+                    else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
+
+                val reportId = UUID.randomUUID().toString()
+                val report = Report(
+                    id = reportId,
+                    detectedAtEpochMs = System.currentTimeMillis(),
                     title = snap.title,
                     channel = snap.channel,
-                    duration = snap.duration
+                    durationSec = snap.duration,
+                    scorePercent = scorePercent,
+                    severity = severity,
+                    dangerEvidence = dangerEvidence,
+                    summary = summary,
+                    detail = detail
                 )
-            }.getOrNull()
 
-            if (apiRes == null) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FloatingButtonService, "분석 서버 응답을 받지 못했습니다.", Toast.LENGTH_SHORT).show()
-                }
-                return@launch
-            }
+                    android.util.Log.d(
+                        TAG,
+                        "[SAVE] reportId=$reportId severity=$severity score=$scorePercent " +
+                                "title='${snap.title.take(40)}' channel='${snap.channel.take(30)}' summary='${report.summary.take(80)}'"
+                    )
 
-            val severity = when (apiRes.finalRiskLevel ?: 1) {
-                2 -> Severity.DANGER
-                1 -> Severity.CAUTION
-                0 -> Severity.SAFE
-                else -> Severity.CAUTION
-            }
-            val scorePercent = ((apiRes.finalScore ?: 0f) * 100f)
-                .roundToInt()
-                .coerceIn(0, 100)
+                    AppContainer.reportRepository.saveReport(report)
+                    android.util.Log.d(TAG, "[SAVE-DONE] reportId=$reportId")
 
+                    // ✅ 분석 끝났으니 로딩 해제(보고서/경고 띄우기 전에)
+                    setButtonLoading(false)
 
-            val summary = apiRes.shortReport?.trim().orEmpty()
-
-            val detail = apiRes.analysisReport?.trim().orEmpty()
-                .ifBlank { summary }
-
-
-            val dangerEvidence =
-                if (severity == Severity.SAFE) emptyList()
-                else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
-
-            val reportId = UUID.randomUUID().toString()
-            val report = Report(
-                id = reportId,
-                detectedAtEpochMs = System.currentTimeMillis(),
-                title = snap.title,
-                channel = snap.channel,
-                durationSec = snap.duration,
-                scorePercent = scorePercent,
-                severity = severity,
-                dangerEvidence = dangerEvidence,
-                summary = summary,
-                detail = detail
-            )
-
-            withContext(Dispatchers.Main) {
-                android.util.Log.d(TAG, "[SAVE] reportId=$reportId severity=$severity score=$scorePercent " +
-                        "title='${snap.title.take(40)}' channel='${snap.channel.take(30)}' summary='${report.summary.take(80)}'")
-
-                AppContainer.reportRepository.saveReport(report)
-
-                android.util.Log.d(TAG, "[SAVE-DONE] reportId=$reportId")
-
-                if (severity == Severity.SAFE) {
-                    android.util.Log.d(TAG, "[OPEN-REQ] (SAFE) reportId=$reportId alertLen=${report.summary.length}")
-                    openReportFromOverlay(reportId = reportId, alertText = report.summary)
-                } else {
-                    android.util.Log.d(TAG, "[WARN-SHOW] reportId=$reportId")
-                    alertRenderer.showWarning(
-                        title = "! 영상에 문제가 있습니다",
-                        bodyLead = report.summary
-                    ) {
-                        android.util.Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
+                    if (severity == Severity.SAFE) {
+                        android.util.Log.d(TAG, "[OPEN-REQ] (SAFE) reportId=$reportId alertLen=${report.summary.length}")
                         openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                    } else {
+                        android.util.Log.d(TAG, "[WARN-SHOW] reportId=$reportId")
+                        alertRenderer.showWarning(
+                            title = "! 영상에 문제가 있습니다",
+                            bodyLead = report.summary
+                        ) {
+                            android.util.Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
+                            openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                        }
                     }
                 }
+            } finally {
+                // ✅ 예외/리턴 경로 포함 안전 복구
+                setButtonLoading(false)
             }
-
         }
     }
 
