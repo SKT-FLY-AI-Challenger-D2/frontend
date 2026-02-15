@@ -33,6 +33,11 @@ import com.example.ytnowplaying.prefs.ModePrefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.example.ytnowplaying.R
+
 
 @Composable
 fun MainScreen(
@@ -107,11 +112,23 @@ private fun TopBar(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val brandBlue = Color(0xFF2563EB)
+
+            Image(
+                painter = painterResource(id = R.drawable.realy_logo), // 또는 R.drawable.네_로고
+                contentDescription = "App Icon",
+                modifier = Modifier.size(30.dp),
+                contentScale = ContentScale.Fit
+            )
+
+            Spacer(Modifier.width(6.dp))
+
             Text(
                 text = "REALY.AI",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = Color(0xFF111111)
+                color = brandBlue
             )
+
 
             Spacer(Modifier.weight(1f))
 

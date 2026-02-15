@@ -1,94 +1,97 @@
 package com.example.ytnowplaying.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.ytnowplaying.R
 
 @Composable
 fun StartScreen(
     onStart: () -> Unit
 ) {
-    // 스크린샷 기준: 위(블루) -> 아래(퍼플) 그라데이션
-    val topBlue = Color(0xFF3872FE)
-    val bottomPurple = Color(0xFF9216FA)
+    val primaryBlue = Color(0xFF2563EB)
+    val subtitleGray = Color(0xFF6B7280)
+    val brandBlue = Color(0xFF2563EB)
+
+    // ✅ 여기만 바꾸면 됨:
+    // - app icon foreground를 로고처럼 쓰려면 R.mipmap.ic_launcher_foreground
+    // - drawable에 별도 로고(realy_logo.png) 넣었으면 R.drawable.realy_logo
+    val logoResId = R.drawable.realy_logo
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(topBlue, bottomPurple)
-                )
-            )
+            .background(Color.White)
             .padding(horizontal = 24.dp)
     ) {
-        // 중앙 컨텐츠
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(bottom = 40.dp), // 버튼이 하단에 있어서 시각적 중심 보정
+                .padding(bottom = 120.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // ✅ 로고: 아이콘 단독 + 텍스트
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = "✦",
-                    color = Color.White,
-                    fontSize = 56.sp,
-                    fontWeight = FontWeight.SemiBold
+                Image(
+                    painter = painterResource(id = logoResId),
+                    contentDescription = "REALY.AI Logo",
+                    modifier = Modifier.size(56.dp),   // ✅ 로고 크기 (44 -> 56)
+                    contentScale = ContentScale.Fit
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
                     text = "REALY.AI",
-                    color = Color.White,
-                    fontSize = 40.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 40.sp,                 // ✅ 글씨 크기 (26 -> 32)
+                    fontWeight = FontWeight.SemiBold,
+                    color = brandBlue                 // ✅ 파란색으로
                 )
             }
+
 
             Spacer(Modifier.height(18.dp))
 
             Text(
                 text = "영상의 진위를 검증하는\n스마트 AI 도우미",
-                color = Color.White.copy(alpha = 0.90f),
+                color = subtitleGray,
                 fontSize = 18.sp,
                 lineHeight = 26.sp,
+                fontWeight = FontWeight.Medium,
                 style = MaterialTheme.typography.bodyLarge
             )
         }
 
-        // 하단 버튼(필 형태)
         Button(
             onClick = onStart,
-            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            colors = ButtonDefaults.buttonColors(containerColor = primaryBlue),
             shape = RoundedCornerShape(999.dp),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 72.dp)
+                .padding(bottom = 56.dp)
                 .width(220.dp)
-                .height(56.dp)
+                .height(54.dp)
         ) {
             Text(
                 text = "시작하기",
-                color = Color(0xFF7A2AFB), // 보라 톤 텍스트
+                color = Color.White,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
