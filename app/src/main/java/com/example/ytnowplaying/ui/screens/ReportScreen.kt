@@ -1,5 +1,3 @@
-// ReportScreen.kt (전체 교체)
-
 package com.example.ytnowplaying.ui.screens
 
 import android.app.Activity
@@ -132,11 +130,13 @@ fun ReportScreen(
         ) {
             item { ReportHeaderCard(r) }
 
+            // ✅ 변경: "요약"을 "위험 요소"보다 먼저 배치
+            item { SectionCard(r.severity, kind = SectionKind.SUMMARY, title = "요약", body = r.summary) }
+
             if (r.severity != Severity.SAFE && r.dangerEvidence.isNotEmpty()) {
                 item { EvidenceCard(r.severity, r.dangerEvidence) }
             }
 
-            item { SectionCard(r.severity, kind = SectionKind.SUMMARY, title = "요약", body = r.summary) }
             item { SectionCard(r.severity, kind = SectionKind.DETAIL, title = "상세 분석", body = r.detail) }
 
             item {
@@ -161,11 +161,6 @@ fun ReportScreen(
 }
 
 /* ---------------- TopBar (SettingsScreen과 동일 규격) ---------------- */
-
-// ✅ ReportScreen.kt 안에서 ReportTopBar()를 아래 코드로 "그대로 교체"해.
-// (SettingsTopBar 규격: height=64, horizontal padding=16, back=← 32sp/semibold,
-//  back modifier: clickable + padding(end=14, bottom=8), title=22sp/semibold)
-
 @Composable
 private fun ReportTopBar(
     onBack: () -> Unit,
@@ -178,22 +173,22 @@ private fun ReportTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)                 // ✅ Settings와 동일
-                .padding(horizontal = 16.dp),  // ✅ Settings와 동일
+                .height(64.dp)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "←",                    // ✅ Settings와 동일
-                fontSize = 32.sp,              // ✅ Settings와 동일
+                text = "←",
+                fontSize = 32.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .clickable { onBack() }
-                    .padding(end = 14.dp, top = 0.dp, bottom = 8.dp) // ✅ Settings와 동일
+                    .padding(end = 14.dp, top = 0.dp, bottom = 8.dp)
             )
 
             Text(
-                text = "분석 보고서",           // ✅ 제목만 Report로
-                fontSize = 22.sp,              // ✅ Settings와 동일
+                text = "분석 보고서",
+                fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color(0xFF111111)
             )
@@ -201,10 +196,7 @@ private fun ReportTopBar(
     }
 }
 
-
-
 /* ---------------- Severity theme ---------------- */
-
 private enum class SectionKind { SUMMARY, DETAIL }
 
 private data class SeverityTheme(
@@ -257,7 +249,6 @@ private fun CircleBadge(
 }
 
 /* ---------------- Header Card ---------------- */
-
 @Composable
 private fun ReportHeaderCard(r: Report) {
     val theme = rememberSeverityTheme(r.severity)
@@ -269,7 +260,6 @@ private fun ReportHeaderCard(r: Report) {
     }
 
     val scoreText = if (r.scorePercent in 1..100) "${r.scorePercent}%" else "-"
-
     val channelText = r.channel?.trim().orEmpty().ifBlank { "채널 정보 없음" }
 
     Card(
@@ -345,7 +335,6 @@ private fun ReportHeaderCard(r: Report) {
 }
 
 /* ---------------- Evidence Card ---------------- */
-
 @Composable
 private fun EvidenceCard(sev: Severity, dangerEvidence: List<String>) {
     val theme = rememberSeverityTheme(sev)
@@ -362,7 +351,6 @@ private fun EvidenceCard(sev: Severity, dangerEvidence: List<String>) {
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // ✅ "느낌표 세모" = ⚠
                 Text(
                     text = "⚠",
                     color = theme.accent,
@@ -370,8 +358,6 @@ private fun EvidenceCard(sev: Severity, dangerEvidence: List<String>) {
                     fontWeight = FontWeight.ExtraBold
                 )
                 Spacer(Modifier.width(10.dp))
-
-                // ✅ 타이틀 크기/색
                 Text(
                     text = "위험 요소",
                     color = theme.accent,
@@ -382,7 +368,6 @@ private fun EvidenceCard(sev: Severity, dangerEvidence: List<String>) {
 
             Spacer(Modifier.height(12.dp))
 
-            // ✅ 점(•) 대신 "!" / ✅ 줄 간격 증가
             dangerEvidence.forEachIndexed { idx, line ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -412,7 +397,6 @@ private fun EvidenceCard(sev: Severity, dangerEvidence: List<String>) {
 }
 
 /* ---------------- Section Card (Summary/Detail) ---------------- */
-
 @Composable
 private fun SectionCard(
     sev: Severity,
@@ -421,7 +405,6 @@ private fun SectionCard(
     body: String
 ) {
     val theme = rememberSeverityTheme(sev)
-
     val container = when (kind) {
         SectionKind.SUMMARY -> theme.summaryBg
         SectionKind.DETAIL -> Color.White
@@ -441,19 +424,18 @@ private fun SectionCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 when (kind) {
                     SectionKind.SUMMARY -> {
-                        // ✅ 요약: i 아이콘
                         CircleBadge(text = "i", color = theme.accent)
                         Spacer(Modifier.width(10.dp))
                     }
                     SectionKind.DETAIL -> {
-                        // ✅ 상세 분석: 왼쪽 아무것도 없음
+                        // no leading icon
                     }
                 }
 
                 Text(
                     text = title,
                     color = theme.accent,
-                    fontSize = 17.sp,            // ✅ 타이틀 크기 업
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
@@ -463,7 +445,7 @@ private fun SectionCard(
             Text(
                 text = body,
                 color = Color(0xFF111111),
-                fontSize = 15.sp,              // ✅ 요약 내용 크기 업(상세도 동일)
+                fontSize = 15.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -472,7 +454,6 @@ private fun SectionCard(
 }
 
 /* ---------------- Buttons ---------------- */
-
 @Composable
 private fun PrimaryButtonSolidBlue(text: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)

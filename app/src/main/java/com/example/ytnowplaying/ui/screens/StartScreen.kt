@@ -55,7 +55,7 @@ fun StartScreen(
                     modifier = Modifier.size(56.dp),   // ✅ 로고 크기 (44 -> 56)
                     contentScale = ContentScale.Fit
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(0.dp))
                 Text(
                     text = "REALY.AI",
                     fontSize = 40.sp,                 // ✅ 글씨 크기 (26 -> 32)
