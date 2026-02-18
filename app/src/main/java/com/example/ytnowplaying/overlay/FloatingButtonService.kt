@@ -336,19 +336,45 @@ class FloatingButtonService : Service() {
                     // ✅ 분석 끝났으니 로딩 해제(보고서/경고 띄우기 전에)
                     setButtonLoading(false)
 
-                    if (severity == Severity.SAFE) {
-                        android.util.Log.d(TAG, "[OPEN-REQ] (SAFE) reportId=$reportId alertLen=${report.summary.length}")
-                        openReportFromOverlay(reportId = reportId, alertText = report.summary)
-                    } else {
-                        android.util.Log.d(TAG, "[WARN-SHOW] reportId=$reportId")
-                        alertRenderer.showWarning(
-                            title = "! 영상에 문제가 있습니다",
-                            bodyLead = report.summary
-                        ) {
-                            android.util.Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
-                            openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                    // ✅ 버튼 모드 오버레이 정책
+                    // - 위험(DANGER): 모달 + 자동 닫힘 30초
+                    // - 주의(CAUTION): 모달 + 자동 닫힘 8초(문구/색상 다르게)
+                    // - 안전(SAFE): 모달 X, 상단 배너 2초(자동 이동 없음)
+                    when (severity) {
+                        Severity.DANGER -> {
+                            alertRenderer.showModal(
+                                tone = OverlayAlertRenderer.Tone.DANGER,
+                                title = "! 영상에 문제가 있습니다",
+                                bodyLead = report.summary,
+                                autoDismissOverrideMs = 30_000L,
+                            ) {
+                                openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                            }
+                        }
+
+                        Severity.CAUTION -> {
+                            alertRenderer.showModal(
+                                tone = OverlayAlertRenderer.Tone.CAUTION,
+                                title = "! 주의가 필요합니다",
+                                bodyLead = report.summary,
+                                autoDismissOverrideMs = 8_000L,
+                            ) {
+                                openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                            }
+                        }
+
+                        Severity.SAFE -> {
+                            alertRenderer.showBanner(
+                                tone = OverlayAlertRenderer.Tone.SAFE,
+                                title = "안전",
+                                subtitle = "탭하여 보고서 보기",
+                                autoDismissMs = 2_000L,
+                            ) {
+                                openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                            }
                         }
                     }
+
                 }
             } finally {
                 // ✅ 예외/리턴 경로 포함 안전 복구

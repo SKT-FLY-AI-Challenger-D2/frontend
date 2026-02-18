@@ -259,7 +259,7 @@ private fun ReportHeaderCard(r: Report) {
         Severity.SAFE -> "안전"
     }
 
-    val scoreText = if (r.scorePercent in 1..100) "${r.scorePercent}%" else "-"
+    val scoreText = if (r.scorePercent in 0..100) "${r.scorePercent}%" else "-"
     val channelText = r.channel?.trim().orEmpty().ifBlank { "채널 정보 없음" }
 
     Card(

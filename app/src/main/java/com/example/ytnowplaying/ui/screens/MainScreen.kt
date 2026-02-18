@@ -1,6 +1,5 @@
 package com.example.ytnowplaying.ui.screens
 
-import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,7 +11,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,33 +29,22 @@ import androidx.compose.ui.unit.sp
 import com.example.ytnowplaying.AppContainer
 import com.example.ytnowplaying.data.report.Report
 import com.example.ytnowplaying.data.report.Severity
-import com.example.ytnowplaying.overlay.OverlayController
 import com.example.ytnowplaying.prefs.ModePrefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.layout.ContentScale
-import com.example.ytnowplaying.R
-
 
 @Composable
 fun MainScreen(
     onOpenHistory: () -> Unit,   // 유지(지금 UI에선 미사용)
     onOpenReport: (String) -> Unit,
-    onOpenSettings: () -> Unit,  // ✅ 추가
+    onOpenSettings: () -> Unit,  // ✅ 유지
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val repo = AppContainer.reportRepository
 
-    var reports by remember { mutableStateOf<List<Report>>(emptyList()) }
-
-    // Main 진입 시: 버튼 모드일 때만 플로팅 버튼 서비스 시작(권한 있을 때)
-    LaunchedEffect(Unit) {
-
-        reports = repo.listReports()
-    }
+    // ✅ 저장되자마자 UI 갱신되도록 StateFlow 구독
+    val reports by repo.observeReports().collectAsState()
 
     Column(
         modifier = Modifier
@@ -71,16 +61,16 @@ fun MainScreen(
             item {
                 MainHeroCard(
                     onAnalyzeClick = {
-                        // 수동 모드: 플로팅 버튼을 ‘띄우는’ 게 아니라
-                        // 유튜브가 켜져있을 때 NLS가 알아서 띄우게 둔다.
-                        // 여기서는 사용자에게 안내만.
                         if (!ModePrefs.isBackgroundModeEnabled(ctx)) {
                             android.widget.Toast
-                                .makeText(ctx, "유튜브에서 영상을 재생 중일 때 오른쪽 버튼을 눌러 분석하세요.", android.widget.Toast.LENGTH_SHORT)
+                                .makeText(
+                                    ctx,
+                                    "유튜브에서 영상을 재생 중일 때 오른쪽 버튼을 눌러 분석하세요.",
+                                    android.widget.Toast.LENGTH_SHORT
+                                )
                                 .show()
                         }
                     }
-
                 )
             }
 
@@ -112,23 +102,11 @@ private fun TopBar(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val brandBlue = Color(0xFF2563EB)
-
-            Image(
-                painter = painterResource(id = R.drawable.realy_logo), // 또는 R.drawable.네_로고
-                contentDescription = "App Icon",
-                modifier = Modifier.size(30.dp),
-                contentScale = ContentScale.Fit
-            )
-
-            Spacer(Modifier.width(6.dp))
-
             Text(
                 text = "REALY.AI",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = brandBlue
+                color = Color(0xFF111111)
             )
-
 
             Spacer(Modifier.weight(1f))
 
@@ -142,9 +120,6 @@ private fun TopBar(
         }
     }
 }
-
-// 이하(카드/리스트/유틸) 코드는 너가 붙인 그대로 유지
-
 
 @Composable
 private fun MainHeroCard(
@@ -337,7 +312,6 @@ private fun SeverityChip(severity: Severity) {
 }
 
 private fun formatKoreanDateTime(epochMs: Long): String {
-    // 예: 2026. 2. 9. 오후 3:24
     val sdf = SimpleDateFormat("yyyy. M. d. a h:mm", Locale.KOREA)
     return sdf.format(Date(epochMs))
 }

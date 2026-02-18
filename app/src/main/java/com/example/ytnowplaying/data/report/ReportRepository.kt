@@ -1,12 +1,12 @@
 package com.example.ytnowplaying.data.report
 
-interface ReportRepository {
-    suspend fun listReports(): List<Report>
-    suspend fun getReport(id: String): Report?
+import kotlinx.coroutines.flow.StateFlow
 
-    /**
-     * In-memory 구현 기준으로는 upsert 동작.
-     * (id가 같으면 교체, 없으면 추가)
-     */
+interface ReportRepository {
+    suspend fun getReport(id: String): Report?
     suspend fun saveReport(report: Report)
+    suspend fun listReports(): List<Report>
+
+    // ✅ UI가 즉시 갱신되도록: 보고서 목록을 관찰 가능하게 제공
+    fun observeReports(): StateFlow<List<Report>>
 }

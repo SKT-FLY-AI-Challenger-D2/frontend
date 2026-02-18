@@ -377,19 +377,34 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 Log.d(TAG, "[SAVE-DONE] reportId=$reportId stableKey=$stableKey")
 
                 // ✅ 핵심 변경: 백그라운드 모드에서는 "위험(DANGER)"일 때만 오버레이
-                if (severity != Severity.DANGER) {
-                    renderer.clearWarning()   // CAUTION/SAFE면 기존 경고 있으면 제거
-                    return@withContext
+                when (severity) {
+                    Severity.DANGER -> {
+                        renderer.showModal(
+                            tone = OverlayAlertRenderer.Tone.DANGER,
+                            title = "! 영상에 문제가 있습니다",
+                            bodyLead = summary,
+                            autoDismissOverrideMs = 0L
+                        ) {
+                            openReportFromOverlay(reportId = reportId, alertText = summary)
+                        }
+                    }
+
+                    Severity.CAUTION -> {
+                        renderer.showBanner(
+                            tone = OverlayAlertRenderer.Tone.CAUTION,
+                            title = "주의",
+                            subtitle = "탭하여 보고서 보기",
+                            autoDismissMs = 5_000L
+                        ) {
+                            openReportFromOverlay(reportId = reportId, alertText = summary)
+                        }
+                    }
+
+                    Severity.SAFE -> {
+                        renderer.clearAll()
+                    }
                 }
 
-                Log.d(TAG, "[WARN-SHOW] reportId=$reportId stableKey=$stableKey")
-                renderer.showWarning(
-                    title = "! 영상에 문제가 있습니다",
-                    bodyLead = summary
-                ) {
-                    Log.d(TAG, "[WARN-CLICK] reportId=$reportId -> OPEN")
-                    openReportFromOverlay(reportId = reportId, alertText = summary)
-                }
             }
         }
     }
