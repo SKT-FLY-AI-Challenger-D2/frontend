@@ -2,6 +2,7 @@ package com.example.ytnowplaying.render
 
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
@@ -15,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 
 private const val TAG = "OverlayRenderer"
 
@@ -90,7 +92,7 @@ class OverlayAlertRenderer(
             Tone.SAFE -> Palette(
                 accent = 0xFF16A34A.toInt(),
                 circleBg = 0x3316A34A.toInt(),
-                bannerBg = 0xFFEAFBF1.toInt(),
+                bannerBg = 0xFFFFFFFF.toInt(),
                 badgeBg = 0x3316A34A.toInt(),
                 bannerText = 0xFF16A34A.toInt(),
                 bannerSubText = 0xFF14532D.toInt(),
@@ -103,6 +105,11 @@ class OverlayAlertRenderer(
     private fun dp(v: Int): Int = (v * appCtx.resources.displayMetrics.density).toInt()
     private fun dpF(v: Float): Float = (v * appCtx.resources.displayMetrics.density)
     private fun alphaColor(color: Int, a: Int): Int = ((a and 0xFF) shl 24) or (color and 0x00FFFFFF)
+
+    private fun statusBarHeightPx(): Int {
+        val resId = appCtx.resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (resId > 0) appCtx.resources.getDimensionPixelSize(resId) else 0
+    }
 
     // ------------------------------------------------------------
     // AlertRenderer (기존 호환)
@@ -247,12 +254,16 @@ class OverlayAlertRenderer(
         val p = paletteOf(tone)
 
         bannerBg?.setColor(p.bannerBg)
-        bannerBg?.setStroke(dp(1), alphaColor(p.accent, 0x33))
+        // ✅ 보더를 “오른쪽 스샷처럼” 더 선명하게
+        bannerBg?.setStroke(dp(1), alphaColor(p.accent, 0x66))
         bannerBadgeBg?.setColor(p.badgeBg)
+
         bannerSymbolView?.text = p.symbol
         bannerSymbolView?.setTextColor(p.bannerText)
+
         bannerTitleView?.text = title
         bannerTitleView?.setTextColor(p.bannerText)
+
         bannerSubtitleView?.text = subtitle.orEmpty()
         bannerSubtitleView?.setTextColor(p.bannerSubText)
 
@@ -262,6 +273,7 @@ class OverlayAlertRenderer(
             cb?.invoke()
         }
 
+        // ✅ 배너 전체/보조문구 모두 탭 가능
         bannerView?.setOnClickListener { openCb() }
         bannerSubtitleView?.setOnClickListener { openCb() }
         bannerCloseView?.setOnClickListener { clearBanner() }
@@ -361,7 +373,7 @@ class OverlayAlertRenderer(
             setTextColor(0xFFFF3B30.toInt())
             setPadding(0, dp(12), 0, dp(18))
             gravity = Gravity.CENTER
-            paint.isFakeBoldText = true
+            typeface = Typeface.DEFAULT_BOLD
         }
 
         val body = TextView(appCtx).apply {
@@ -400,19 +412,28 @@ class OverlayAlertRenderer(
         if (bannerView != null) return
 
         val dm = appCtx.resources.displayMetrics
+        // ✅ 좌우 여백이 느껴지도록 “폭을 꽉 채우지 말고” 제한
         bannerWidthPx = minOf((dm.widthPixels * 0.92f).toInt(), dp(380))
 
         val bg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dpF(14f)
             setColor(0xFFEAFBF1.toInt())
+            // stroke는 showBanner()에서 톤에 맞게 다시 설정
         }
 
         val root = LinearLayout(appCtx).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             background = bg
-            setPadding(dp(14), dp(12), dp(10), dp(12))
+
+            // ✅ 오른쪽 스샷처럼 “두툼한” 패딩
+            setPadding(dp(16), dp(12), dp(12), dp(12))
+
             isClickable = true
+
+            // ✅ 살짝 떠 보이게(그림자)
+            ViewCompat.setElevation(this, dp(8).toFloat())
         }
 
         val badgeBg = GradientDrawable().apply {
@@ -422,21 +443,22 @@ class OverlayAlertRenderer(
 
         val badge = FrameLayout(appCtx).apply {
             background = badgeBg
-            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                rightMargin = dp(10)
+                marginEnd = dp(12) // ✅ 아이콘-텍스트 간격
             }
         }
 
         val symbol = TextView(appCtx).apply {
             text = "✓"
-            textSize = 14f
-            paint.isFakeBoldText = true
+            textSize = 14.5f
             setTextColor(0xFF16A34A.toInt())
+            includeFontPadding = false
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply { gravity = Gravity.CENTER }
+            typeface = Typeface.DEFAULT_BOLD
         }
         badge.addView(symbol)
 
@@ -447,16 +469,18 @@ class OverlayAlertRenderer(
 
         val title = TextView(appCtx).apply {
             text = "안전"
-            textSize = 14.5f
-            paint.isFakeBoldText = true
+            textSize = 15.5f  // ✅ 더 진하고 커 보이게
             setTextColor(0xFF16A34A.toInt())
+            includeFontPadding = false
+            typeface = Typeface.DEFAULT_BOLD
         }
 
         val subtitle = TextView(appCtx).apply {
             text = "탭하여 보고서 보기"
             textSize = 12.5f
             setTextColor(0xFF14532D.toInt())
-            setPadding(0, dp(2), 0, 0)
+            includeFontPadding = false
+            setPadding(0, dp(3), 0, 0)
         }
 
         textCol.addView(title)
@@ -464,9 +488,11 @@ class OverlayAlertRenderer(
 
         val close = TextView(appCtx).apply {
             text = "✕"
-            textSize = 16f
+            textSize = 18f
             setTextColor(0xFF6B7280.toInt())
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            includeFontPadding = false
+            // ✅ 오른쪽 스샷처럼 터치 영역 넓게
+            setPadding(dp(10), dp(6), dp(10), dp(6))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -532,7 +558,8 @@ class OverlayAlertRenderer(
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             x = 0
-            y = dp(14)
+            // ✅ 상태바 아래로 내려서 “오른쪽 스샷처럼” 위치 고정
+            y = statusBarHeightPx() + dp(10)
         }
     }
 }
