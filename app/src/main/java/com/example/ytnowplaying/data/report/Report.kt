@@ -32,4 +32,6 @@ enum class Severity {
     DANGER,
     CAUTION,
     SAFE,
+    /** final_risk_level = 9 */
+    NOT_AD,
 }

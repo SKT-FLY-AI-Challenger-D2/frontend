@@ -15,8 +15,8 @@ class BackendClient(baseUrl: String) {
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(200, TimeUnit.SECONDS)
+        .writeTimeout(200, TimeUnit.SECONDS)
         .callTimeout(240, TimeUnit.SECONDS)
         .build()
 

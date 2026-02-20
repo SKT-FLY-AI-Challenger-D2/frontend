@@ -130,14 +130,18 @@ fun ReportScreen(
         ) {
             item { ReportHeaderCard(r) }
 
-            // ✅ 변경: "요약"을 "위험 요소"보다 먼저 배치
+            // ✅ "요약" 먼저
             item { SectionCard(r.severity, kind = SectionKind.SUMMARY, title = "요약", body = r.summary) }
 
-            if (r.severity != Severity.SAFE && r.dangerEvidence.isNotEmpty()) {
+            // ✅ 위험 요소: DANGER/CAUTION에서만
+            if ((r.severity == Severity.DANGER || r.severity == Severity.CAUTION) && r.dangerEvidence.isNotEmpty()) {
                 item { EvidenceCard(r.severity, r.dangerEvidence) }
             }
 
-            item { SectionCard(r.severity, kind = SectionKind.DETAIL, title = "상세 분석", body = r.detail) }
+            // ✅ NOT_AD는 "상세 분석" 제거
+            if (r.severity != Severity.NOT_AD) {
+                item { SectionCard(r.severity, kind = SectionKind.DETAIL, title = "상세 분석", body = r.detail) }
+            }
 
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -223,6 +227,11 @@ private fun rememberSeverityTheme(sev: Severity): SeverityTheme {
             accent = Color(0xFF00C853),
             summaryBg = Color(0xFFEAFBF1)
         )
+        Severity.NOT_AD -> SeverityTheme(
+            gradient = Brush.horizontalGradient(listOf(Color(0xFF2563EB), Color(0xFF4F8DF7))),
+            accent = Color(0xFF2563EB),
+            summaryBg = Color(0xFFEFF6FF)
+        )
     }
 }
 
@@ -257,6 +266,7 @@ private fun ReportHeaderCard(r: Report) {
         Severity.DANGER -> "위험"
         Severity.CAUTION -> "주의"
         Severity.SAFE -> "안전"
+        Severity.NOT_AD -> "광고 아님"
     }
 
     val scoreText = if (r.scorePercent in 0..100) "${r.scorePercent}%" else "-"
@@ -311,22 +321,25 @@ private fun ReportHeaderCard(r: Report) {
                         fontWeight = FontWeight.ExtraBold
                     )
 
-                    Spacer(Modifier.weight(1f))
+                    // ✅ NOT_AD는 우측 위험도(%) 영역 제거
+                    if (r.severity != Severity.NOT_AD) {
+                        Spacer(Modifier.weight(1f))
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "위험도",
-                            color = Color(0xCCFFFFFF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = scoreText,
-                            color = Color.White,
-                            fontSize = 40.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "위험도",
+                                color = Color(0xCCFFFFFF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = scoreText,
+                                color = Color.White,
+                                fontSize = 40.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 }
             }

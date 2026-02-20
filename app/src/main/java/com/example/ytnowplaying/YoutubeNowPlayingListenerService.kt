@@ -330,6 +330,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             }
 
             val severity = when (apiRes.finalRiskLevel ?: 1) {
+                9 -> Severity.NOT_AD
                 2 -> Severity.DANGER
                 1 -> Severity.CAUTION
                 0 -> Severity.SAFE
@@ -340,13 +341,18 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 .roundToInt()
                 .coerceIn(0, 100)
 
-            val summary = apiRes.shortReport?.trim().orEmpty()
+            val summaryRaw = apiRes.shortReport?.trim().orEmpty()
+            val summary = if (severity == Severity.NOT_AD && summaryRaw.isBlank()) {
+                "이 영상은 광고성 콘텐츠가 아닌 일반 정보 전달 영상으로 판단됩니다."
+            } else {
+                summaryRaw
+            }
 
             val detail = apiRes.analysisReport?.trim().orEmpty()
                 .ifBlank { summary }
 
             val dangerEvidence =
-                if (severity == Severity.SAFE) emptyList()
+                if (severity == Severity.SAFE || severity == Severity.NOT_AD) emptyList()
                 else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
 
             val reportId = UUID.randomUUID().toString()
@@ -399,8 +405,8 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                             openReportFromOverlay(reportId = reportId, alertText = summary)
                         }
                     }
-
-                    Severity.SAFE -> {
+                    Severity.SAFE,
+                    Severity.NOT_AD -> {
                         renderer.clearAll()
                     }
                 }

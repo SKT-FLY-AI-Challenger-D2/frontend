@@ -51,6 +51,13 @@ class FloatingButtonService : Service() {
     private var buttonProgress: ProgressBar? = null
     private var added = false
 
+    // ✅ 투명도(요구사항)
+    // - 기본 상태: 조금 더 투명하게
+    // - 눌렀을 때: 더 투명하게
+    private val BASE_ALPHA = 0.80f
+    private val PRESSED_ALPHA = 0.40f
+    private val LOADING_ALPHA = 0.50f
+
     @Volatile
     private var isAnalyzing = false
 
@@ -92,7 +99,7 @@ class FloatingButtonService : Service() {
 
     override fun onDestroy() {
         main.removeCallbacks(autoStopRunnable)
-        setButtonLoading(false) // 안전하게 원복
+        setButtonLoading(false)
         hideButton()
         scope.cancel()
         super.onDestroy()
@@ -132,29 +139,31 @@ class FloatingButtonService : Service() {
             intArrayOf(0xFF4F8DF7.toInt(), 0xFF6E56CF.toInt())
         ).apply { shape = GradientDrawable.OVAL }
 
-        // ✅ 크기 고정(56dp) 제거: 기존처럼 padding 기반(18dp)으로 크기 결정
         val container = FrameLayout(this).apply {
             background = bg
 
-            val p = dp(18)          // ✅ 기존 TextView padding과 동일
+            val p = dp(18)
             setPadding(p, p, p, p)
 
             isClickable = true
             isFocusable = false
             ViewCompat.setElevation(this, dp(10).toFloat())
 
+            // ✅ 기본 투명도
+            alpha = BASE_ALPHA
+
             // ✅ 눌림 피드백(로딩 중엔 무시)
             setOnTouchListener { v, e ->
                 if (isAnalyzing) return@setOnTouchListener false
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
-                        v.alpha = 0.72f
+                        v.alpha = PRESSED_ALPHA
                         v.scaleX = 0.96f
                         v.scaleY = 0.96f
                     }
                     MotionEvent.ACTION_UP,
                     MotionEvent.ACTION_CANCEL -> {
-                        v.alpha = 1f
+                        v.alpha = BASE_ALPHA
                         v.scaleX = 1f
                         v.scaleY = 1f
                     }
@@ -204,7 +213,6 @@ class FloatingButtonService : Service() {
         }
     }
 
-
     private fun removeFloatingButton() {
         val v = buttonView
         if (v == null) {
@@ -225,7 +233,6 @@ class FloatingButtonService : Service() {
     }
 
     private fun setButtonLoading(loading: Boolean) {
-        // UI 토글은 메인에서
         main.post {
             val v = buttonView ?: return@post
             val icon = buttonIcon ?: return@post
@@ -234,7 +241,7 @@ class FloatingButtonService : Service() {
             isAnalyzing = loading
 
             v.isEnabled = !loading
-            v.alpha = if (loading) 0.72f else 1f
+            v.alpha = if (loading) LOADING_ALPHA else BASE_ALPHA
             v.scaleX = 1f
             v.scaleY = 1f
 
@@ -259,7 +266,6 @@ class FloatingButtonService : Service() {
     }
 
     private fun onButtonClicked() {
-        // ✅ 중복 클릭 방지
         if (isAnalyzing) return
 
         val snap = NowPlayingCache.get()
@@ -268,12 +274,10 @@ class FloatingButtonService : Service() {
             return
         }
 
-        // ✅ 클릭 즉시 피드백(돋보기 → 로딩)
         setButtonLoading(true)
 
         scope.launch {
             try {
-                // UX: 기존 유지(짧은 텀)
                 delay(700L)
 
                 val apiRes = runCatching {
@@ -292,6 +296,7 @@ class FloatingButtonService : Service() {
                 }
 
                 val severity = when (apiRes.finalRiskLevel ?: 1) {
+                    9 -> Severity.NOT_AD
                     2 -> Severity.DANGER
                     1 -> Severity.CAUTION
                     0 -> Severity.SAFE
@@ -302,11 +307,21 @@ class FloatingButtonService : Service() {
                     .roundToInt()
                     .coerceIn(0, 100)
 
-                val summary = apiRes.shortReport?.trim().orEmpty()
-                val detail = apiRes.analysisReport?.trim().orEmpty().ifBlank { summary }
+                val summaryRaw = apiRes.shortReport?.trim().orEmpty()
+                val summary = if (severity == Severity.NOT_AD && summaryRaw.isBlank()) {
+                    "이 영상은 광고성 콘텐츠가 아닌 일반 정보 전달 영상으로 판단됩니다."
+                } else {
+                    summaryRaw
+                }
+
+                val detail = if (severity == Severity.NOT_AD) {
+                    ""
+                } else {
+                    apiRes.analysisReport?.trim().orEmpty().ifBlank { summary }
+                }
 
                 val dangerEvidence =
-                    if (severity == Severity.SAFE) emptyList()
+                    if (severity == Severity.SAFE || severity == Severity.NOT_AD) emptyList()
                     else apiRes.dangerEvidence.orEmpty().map { it.trim() }.filter { it.isNotBlank() }
 
                 val reportId = UUID.randomUUID().toString()
@@ -324,22 +339,10 @@ class FloatingButtonService : Service() {
                 )
 
                 withContext(Dispatchers.Main) {
-                    android.util.Log.d(
-                        TAG,
-                        "[SAVE] reportId=$reportId severity=$severity score=$scorePercent " +
-                                "title='${snap.title.take(40)}' channel='${snap.channel.take(30)}' summary='${report.summary.take(80)}'"
-                    )
-
                     AppContainer.reportRepository.saveReport(report)
-                    android.util.Log.d(TAG, "[SAVE-DONE] reportId=$reportId")
 
-                    // ✅ 분석 끝났으니 로딩 해제(보고서/경고 띄우기 전에)
                     setButtonLoading(false)
 
-                    // ✅ 버튼 모드 오버레이 정책
-                    // - 위험(DANGER): 모달 + 자동 닫힘 30초
-                    // - 주의(CAUTION): 모달 + 자동 닫힘 8초(문구/색상 다르게)
-                    // - 안전(SAFE): 모달 X, 상단 배너 2초(자동 이동 없음)
                     when (severity) {
                         Severity.DANGER -> {
                             alertRenderer.showModal(
@@ -373,11 +376,20 @@ class FloatingButtonService : Service() {
                                 openReportFromOverlay(reportId = reportId, alertText = report.summary)
                             }
                         }
-                    }
 
+                        Severity.NOT_AD -> {
+                            alertRenderer.showBanner(
+                                tone = OverlayAlertRenderer.Tone.NOT_AD,
+                                title = "광고 아님",
+                                subtitle = "탭하여 보고서 보기",
+                                autoDismissMs = 2_000L,
+                            ) {
+                                openReportFromOverlay(reportId = reportId, alertText = report.summary)
+                            }
+                        }
+                    }
                 }
             } finally {
-                // ✅ 예외/리턴 경로 포함 안전 복구
                 setButtonLoading(false)
             }
         }

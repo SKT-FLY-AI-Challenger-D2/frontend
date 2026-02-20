@@ -1,5 +1,6 @@
 package com.example.ytnowplaying.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -27,18 +29,21 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ytnowplaying.AppContainer
+import com.example.ytnowplaying.R
 import com.example.ytnowplaying.data.report.Report
 import com.example.ytnowplaying.data.report.Severity
 import com.example.ytnowplaying.prefs.ModePrefs
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
 
 @Composable
 fun MainScreen(
-    onOpenHistory: () -> Unit,   // 유지(지금 UI에선 미사용)
+    onOpenHistory: () -> Unit,
     onOpenReport: (String) -> Unit,
-    onOpenSettings: () -> Unit,  // ✅ 유지
+    onOpenSettings: () -> Unit,
 ) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val repo = AppContainer.reportRepository
@@ -90,6 +95,8 @@ fun MainScreen(
 private fun TopBar(
     onOpenSettings: () -> Unit
 ) {
+    val brandBlue = Color(0xFF2563EB)
+
     Surface(
         tonalElevation = 2.dp,
         shadowElevation = 2.dp,
@@ -102,10 +109,22 @@ private fun TopBar(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // ✅ 왼쪽 앱 아이콘 추가
+            Image(
+                painter = painterResource(id = R.drawable.realy_logo),
+                contentDescription = "App Icon",
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+            )
+
+            Spacer(Modifier.width(5.dp))
+
+            // ✅ REALY.AI 색상 변경(파란색)
             Text(
                 text = "REALY.AI",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = Color(0xFF111111)
+                color = brandBlue
             )
 
             Spacer(Modifier.weight(1f))
@@ -272,10 +291,11 @@ private fun ReportRow(
 
 @Composable
 private fun SeverityIcon(severity: Severity) {
-    val (bg, fg, symbol) = when (severity) {
-        Severity.DANGER -> Triple(Color(0xFFFFE4E6), Color(0xFFDC2626), "⚠")
-        Severity.CAUTION -> Triple(Color(0xFFFFEDD5), Color(0xFFEA580C), "!")
-        Severity.SAFE -> Triple(Color(0xFFDCFCE7), Color(0xFF16A34A), "✓")
+    val (bg, fg) = when (severity) {
+        Severity.DANGER -> Color(0xFFFFE4E6) to Color(0xFFDC2626)
+        Severity.CAUTION -> Color(0xFFFFEDD5) to Color(0xFFEA580C)
+        Severity.SAFE -> Color(0xFFDCFCE7) to Color(0xFF16A34A)
+        Severity.NOT_AD -> Color(0xFFDBEAFE) to Color(0xFF2563EB)
     }
 
     Box(
@@ -285,7 +305,32 @@ private fun SeverityIcon(severity: Severity) {
             .background(bg),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = symbol, color = fg, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        when (severity) {
+            Severity.SAFE -> {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cc),
+                    contentDescription = null,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Severity.NOT_AD -> {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_sh),
+                    contentDescription = null,
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            else -> {
+                val symbol = when (severity) {
+                    Severity.DANGER -> "⚠"
+                    Severity.CAUTION -> "!"
+                    else -> ""
+                }
+                Text(text = symbol, color = fg, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -295,6 +340,7 @@ private fun SeverityChip(severity: Severity) {
         Severity.DANGER -> Triple("위험도: 위험", Color(0xFFFFE4E6), Color(0xFFDC2626))
         Severity.CAUTION -> Triple("위험도: 주의", Color(0xFFFFEDD5), Color(0xFFEA580C))
         Severity.SAFE -> Triple("위험도: 안전", Color(0xFFDCFCE7), Color(0xFF16A34A))
+        Severity.NOT_AD -> Triple("광고 아님", Color(0xFFDBEAFE), Color(0xFF2563EB))
     }
 
     Box(

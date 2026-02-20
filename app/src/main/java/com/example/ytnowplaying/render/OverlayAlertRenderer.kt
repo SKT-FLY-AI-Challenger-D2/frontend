@@ -17,6 +17,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
+import com.example.ytnowplaying.R
 
 private const val TAG = "OverlayRenderer"
 
@@ -45,7 +46,12 @@ class OverlayAlertRenderer(
     private var bannerView: View? = null
     private var bannerBg: GradientDrawable? = null
     private var bannerBadgeBg: GradientDrawable? = null
+
+    // ✅ 기존 텍스트 심볼(⚠) 유지용
     private var bannerSymbolView: TextView? = null
+    // ✅ SAFE/NOT_AD 아이콘 표시용
+    private var bannerSymbolIconView: ImageView? = null
+
     private var bannerTitleView: TextView? = null
     private var bannerSubtitleView: TextView? = null
     private var bannerCloseView: TextView? = null
@@ -54,7 +60,7 @@ class OverlayAlertRenderer(
     private var bannerWidthPx: Int = 0
     private val removeBannerRunnable = Runnable { clearBanner() }
 
-    enum class Tone { DANGER, CAUTION, SAFE }
+    enum class Tone { DANGER, CAUTION, SAFE, NOT_AD }
 
     private data class Palette(
         val accent: Int,
@@ -93,11 +99,21 @@ class OverlayAlertRenderer(
                 accent = 0xFF16A34A.toInt(),
                 circleBg = 0x3316A34A.toInt(),
                 bannerBg = 0xFFFFFFFF.toInt(),
-                badgeBg = 0x3316A34A.toInt(),
+                badgeBg = 0xFFDCFCE7.toInt(),
                 bannerText = 0xFF16A34A.toInt(),
                 bannerSubText = 0xFF14532D.toInt(),
                 symbol = "✓",
                 defaultLead = "뚜렷한 의심 요소가 발견되지 않았습니다.",
+            )
+            Tone.NOT_AD -> Palette(
+                accent = 0xFF2563EB.toInt(),
+                circleBg = 0x332563EB.toInt(),
+                bannerBg = 0xFFFFFFFF.toInt(),
+                badgeBg = 0xFFDBEAFE.toInt(),
+                bannerText = 0xFF2563EB.toInt(),
+                bannerSubText = 0xFF1E3A8A.toInt(),
+                symbol = "🛡",
+                defaultLead = "이 영상은 광고성 콘텐츠가 아닌 것으로 보입니다.",
             )
         }
     }
@@ -230,7 +246,7 @@ class OverlayAlertRenderer(
     }
 
     /**
-     * 상단 배너(버튼모드 안전, 백그라운드 주의)
+     * 상단 배너(버튼모드 안전/광고아님, 백그라운드 주의)
      * @param autoDismissMs 0이면 자동 제거 비활성
      */
     fun showBanner(
@@ -258,8 +274,28 @@ class OverlayAlertRenderer(
         bannerBg?.setStroke(dp(1), alphaColor(p.accent, 0x66))
         bannerBadgeBg?.setColor(p.badgeBg)
 
-        bannerSymbolView?.text = p.symbol
-        bannerSymbolView?.setTextColor(p.bannerText)
+        // ✅ SAFE/NOT_AD는 아이콘, DANGER/CAUTION은 텍스트(⚠)
+        val symbolText = bannerSymbolView
+        val symbolIcon = bannerSymbolIconView
+
+        when (tone) {
+            Tone.SAFE -> {
+                symbolText?.visibility = View.GONE
+                symbolIcon?.visibility = View.VISIBLE
+                symbolIcon?.setImageResource(R.drawable.ic_cc)
+            }
+            Tone.NOT_AD -> {
+                symbolText?.visibility = View.GONE
+                symbolIcon?.visibility = View.VISIBLE
+                symbolIcon?.setImageResource(R.drawable.ic_sh)
+            }
+            Tone.DANGER, Tone.CAUTION -> {
+                symbolIcon?.visibility = View.GONE
+                symbolText?.visibility = View.VISIBLE
+                symbolText?.text = p.symbol
+                symbolText?.setTextColor(p.bannerText)
+            }
+        }
 
         bannerTitleView?.text = title
         bannerTitleView?.setTextColor(p.bannerText)
@@ -449,7 +485,8 @@ class OverlayAlertRenderer(
             }
         }
 
-        val symbol = TextView(appCtx).apply {
+        // ✅ 텍스트 심볼(⚠)용
+        val symbolText = TextView(appCtx).apply {
             text = "✓"
             textSize = 14.5f
             setTextColor(0xFF16A34A.toInt())
@@ -460,7 +497,17 @@ class OverlayAlertRenderer(
             ).apply { gravity = Gravity.CENTER }
             typeface = Typeface.DEFAULT_BOLD
         }
-        badge.addView(symbol)
+
+        // ✅ SAFE/NOT_AD 아이콘용 (기본은 숨김, showBanner에서 tone별로 노출)
+        val symbolIcon = ImageView(appCtx).apply {
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(dp(18), dp(18)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+
+        badge.addView(symbolText)
+        badge.addView(symbolIcon)
 
         val textCol = LinearLayout(appCtx).apply {
             orientation = LinearLayout.VERTICAL
@@ -506,7 +553,8 @@ class OverlayAlertRenderer(
         bannerView = root
         bannerBg = bg
         bannerBadgeBg = badgeBg
-        bannerSymbolView = symbol
+        bannerSymbolView = symbolText
+        bannerSymbolIconView = symbolIcon
         bannerTitleView = title
         bannerSubtitleView = subtitle
         bannerCloseView = close
