@@ -35,25 +35,21 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     private var msm: MediaSessionManager? = null
     private var currentController: MediaController? = null
 
-    // --- "영상 변경 확정"용 디바운스 ---
     private var pendingStableKey: String? = null
     private var pendingInfo: NowPlayingInfo? = null
     private var pendingRunnable: Runnable? = null
     private val DEBOUNCE_MS = 800L
 
-    // --- channel 올 때까지 보류(hold) ---
     private var holdStableKey: String? = null
     private var holdAttempts: Int = 0
     private var holdRunnable: Runnable? = null
     private val HOLD_RETRY_MS = 200L
     private val HOLD_MAX_TRIES = 15 // 3초
 
-    // --- “캐시 업데이트” dedup ---
     private var lastCachedKey: String? = null
     private var lastCachedAtMs: Long = 0L
     private val CACHE_DEDUP_TTL_MS = 10_000L // 10초
 
-    // --- “자동 전송” dedup ---
     private var lastSentKey: String? = null
     private var lastSentAtMs: Long = 0L
     private val SEND_DEDUP_TTL_MS = 10 * 60_000L // 10분
@@ -70,13 +66,11 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         )
     }
 
-    // ===== 버튼 표시/숨김 상태 머신(핵심) =====
     private var isButtonShown = false
     private var stopButtonRunnable: Runnable? = null
     private val STOP_BUTTON_GRACE_MS = 1_000L  // ✅ 1초 후 꺼짐
 
     private fun updateFloatingButton(youtubeActive: Boolean) {
-        // 백그라운드 모드면 버튼은 항상 꺼짐
         if (ModePrefs.isBackgroundModeEnabled(applicationContext)) {
             if (isButtonShown) {
                 Log.d(TAG, "[BTN] bgMode=ON -> stop button")
@@ -88,7 +82,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             return
         }
 
-        // 오버레이 권한 없으면 버튼 표시 불가
         if (!Settings.canDrawOverlays(applicationContext)) {
             if (isButtonShown) {
                 Log.d(TAG, "[BTN] no overlay permission -> stop button")
@@ -101,7 +94,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         }
 
         if (youtubeActive) {
-            // stop 예약 취소
             stopButtonRunnable?.let { mainHandler.removeCallbacks(it) }
             stopButtonRunnable = null
 
@@ -111,7 +103,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 isButtonShown = true
             }
         } else {
-            // 유튜브가 잠깐 사라졌다가 다시 잡히는 구간이 많아서 즉시 stop 금지
             if (!isButtonShown) return
             if (stopButtonRunnable != null) return
 
@@ -125,7 +116,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             mainHandler.postDelayed(r, STOP_BUTTON_GRACE_MS)
         }
     }
-    // =====================================
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: android.media.MediaMetadata?) {
@@ -137,9 +127,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             scheduleConfirm(info)
         }
 
-        override fun onPlaybackStateChanged(state: PlaybackState?) {
-            // 필요 시 "재생 중일 때만 버튼"로 변경 가능
-        }
+        override fun onPlaybackStateChanged(state: PlaybackState?) {}
     }
 
     private val activeSessionsListener =
@@ -189,7 +177,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         try { msm?.removeOnActiveSessionsChangedListener(activeSessionsListener) } catch (_: Throwable) {}
         msm = null
 
-        // 버튼 정리
         stopButtonRunnable?.let { mainHandler.removeCallbacks(it) }
         stopButtonRunnable = null
         if (isButtonShown) {
@@ -296,7 +283,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             Log.i(TAG, "[CACHED] stableKey=$stableKey title='${info.title.take(60)}' channel='${ch.take(40)}'")
         }
 
-        // 자동 분석은 백그라운드 모드에서만
         if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return
 
         val now2 = android.os.SystemClock.elapsedRealtime()
@@ -324,7 +310,8 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 withContext(Dispatchers.Main) {
                     if (latestSendingKey != stableKey) return@withContext
                     if (!ModePrefs.isBackgroundModeEnabled(applicationContext)) return@withContext
-                    renderer.clearWarning()
+                    // ✅ 통신 오류 오버레이 표시
+                    renderer.showCommError()
                 }
                 return@launch
             }
@@ -342,7 +329,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                 .coerceIn(0, 100)
 
             val summaryRaw = apiRes.shortReport?.trim().orEmpty()
-            val summary = if (severity == Severity.NOT_AD && summaryRaw.isBlank()) {
+            val summary = if (severity == Severity.NOT_AD ) {
                 "이 영상은 광고성 콘텐츠가 아닌 일반 정보 전달 영상으로 판단됩니다."
             } else {
                 summaryRaw
@@ -382,7 +369,6 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
                 Log.d(TAG, "[SAVE-DONE] reportId=$reportId stableKey=$stableKey")
 
-                // ✅ 핵심 변경: 백그라운드 모드에서는 "위험(DANGER)"일 때만 오버레이
                 when (severity) {
                     Severity.DANGER -> {
                         renderer.showModal(

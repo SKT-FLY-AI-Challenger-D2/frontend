@@ -41,6 +41,7 @@ class FloatingButtonService : Service() {
     companion object {
         private const val TAG = "REALY_AI"
         private const val AUTO_STOP_AFTER_HIDE_MS = 30_000L
+        private const val NOT_AD_SUMMARY = "이 영상은 광고성 콘텐츠가 아닌 일반 영상으로 판단됩니다."
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -52,8 +53,6 @@ class FloatingButtonService : Service() {
     private var added = false
 
     // ✅ 투명도(요구사항)
-    // - 기본 상태: 조금 더 투명하게
-    // - 눌렀을 때: 더 투명하게
     private val BASE_ALPHA = 0.80f
     private val PRESSED_ALPHA = 0.40f
     private val LOADING_ALPHA = 0.50f
@@ -124,7 +123,8 @@ class FloatingButtonService : Service() {
     }
 
     private fun hideButton() {
-        runCatching { alertRenderer.clearWarning() }
+        // ✅ 배너/모달 모두 제거
+        runCatching { alertRenderer.clearAll() }
         removeFloatingButton()
     }
 
@@ -149,10 +149,8 @@ class FloatingButtonService : Service() {
             isFocusable = false
             ViewCompat.setElevation(this, dp(10).toFloat())
 
-            // ✅ 기본 투명도
             alpha = BASE_ALPHA
 
-            // ✅ 눌림 피드백(로딩 중엔 무시)
             setOnTouchListener { v, e ->
                 if (isAnalyzing) return@setOnTouchListener false
                 when (e.actionMasked) {
@@ -290,7 +288,12 @@ class FloatingButtonService : Service() {
 
                 if (apiRes == null) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@FloatingButtonService, "분석 서버 응답을 받지 못했습니다.", Toast.LENGTH_SHORT).show()
+                        alertRenderer.showCommError(
+                            title = "죄송합니다",
+                            message = "통신 오류가 발생했습니다.\n다시 돋보기 버튼을 눌러주세요.",
+                            buttonText = "확인",
+                            autoDismissOverrideMs = 0L
+                        )
                     }
                     return@launch
                 }
@@ -308,8 +311,8 @@ class FloatingButtonService : Service() {
                     .coerceIn(0, 100)
 
                 val summaryRaw = apiRes.shortReport?.trim().orEmpty()
-                val summary = if (severity == Severity.NOT_AD && summaryRaw.isBlank()) {
-                    "이 영상은 광고성 콘텐츠가 아닌 일반 정보 전달 영상으로 판단됩니다."
+                val summary = if (severity == Severity.NOT_AD) {
+                    NOT_AD_SUMMARY
                 } else {
                     summaryRaw
                 }
@@ -338,11 +341,11 @@ class FloatingButtonService : Service() {
                     detail = detail
                 )
 
+                // ✅ 저장은 IO(현재 코루틴 컨텍스트)에서 수행
+                AppContainer.reportRepository.saveReport(report)
+
+                // ✅ 오버레이/Activity는 Main에서 처리
                 withContext(Dispatchers.Main) {
-                    AppContainer.reportRepository.saveReport(report)
-
-                    setButtonLoading(false)
-
                     when (severity) {
                         Severity.DANGER -> {
                             alertRenderer.showModal(

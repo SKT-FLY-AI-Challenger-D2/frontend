@@ -1,7 +1,10 @@
+// SettingsScreen.kt (전체 교체)
 package com.example.ytnowplaying.ui.screens
 
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,7 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -20,26 +23,46 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ytnowplaying.AppContainer
+import com.example.ytnowplaying.R
 import com.example.ytnowplaying.overlay.OverlayController
 import com.example.ytnowplaying.permissions.PermissionChecker
 import com.example.ytnowplaying.prefs.ModePrefs
-
-
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var bgEnabled by remember { mutableStateOf(ModePrefs.isBackgroundModeEnabled(ctx)) }
 
     // 권한 상태(표시용)
     val hasNls by remember { mutableStateOf(PermissionChecker.hasNotificationListenerAccess(ctx)) }
     val hasOverlay by remember { mutableStateOf(PermissionChecker.hasOverlayPermission(ctx)) }
+
+    // ✅ 분석 기록 상태 구독 (0개 여부/즉시 갱신용)
+    val repo = AppContainer.reportRepository
+    val reports by repo.observeReports().collectAsState()
+    val isEmpty = reports.isEmpty()
+
+    // ✅ 0개일 때 터치 피드백(색상 잠깐 진해졌다가 복귀)
+    var emptyPulse by remember { mutableStateOf(false) }
+    val clearCardBg by animateColorAsState(
+        targetValue = when {
+            isEmpty && emptyPulse -> Color(0xFFE5E7EB) // 눌렀을 때 피드백
+            isEmpty -> Color(0xFFF3F4F6)              // 0개면 비활성 느낌
+            else -> Color.White
+        },
+        label = "clearCardBg"
+    )
 
     Column(
         modifier = Modifier
@@ -96,7 +119,7 @@ fun SettingsScreen(
                             if (newValue) {
                                 OverlayController.stop(ctx)
                             } else {
-
+                                // (현 구조 유지)
                             }
                         }
                     )
@@ -175,6 +198,78 @@ fun SettingsScreen(
                                 )
                             }
                         ) { Text("오버레이 권한 설정 열기", fontSize = 14.sp) }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // ✅ 분석 기록 삭제 카드
+            val titleColor = if (isEmpty) Color(0xFF6B7280) else Color(0xFF111111)
+            val subColor = if (isEmpty) Color(0xFF9CA3AF) else Color(0xFF6B7280)
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = clearCardBg),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (isEmpty) {
+                            emptyPulse = true
+                            scope.launch {
+                                delay(160L)
+                                emptyPulse = false
+                            }
+                            Toast.makeText(ctx, "삭제할 분석 기록이 없습니다.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            scope.launch {
+                                repo.clearAllReports()
+                                emptyPulse = true
+                                delay(160L)
+                                emptyPulse = false
+                            }
+                            Toast.makeText(ctx, "분석 기록을 삭제했습니다.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // ✅ 아이콘 배경(Box 배경)은 제거하고, ic_tb.png 자체 배경(연핑크)을 그대로 사용
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(999.dp)) // ✅ 완전 원형
+                            .background(Color(0xFFFFE4E6)),   // ✅ 스샷처럼 연핑크 원
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_tb),
+                            contentDescription = null,
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(20.dp) // ✅ 원 안에 들어가도록 적당히 축소
+                        )
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "분석 기록 삭제",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = titleColor
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "모든 분석 기록 삭제하기",
+                            fontSize = 14.sp,
+                            color = subColor
+                        )
                     }
                 }
             }

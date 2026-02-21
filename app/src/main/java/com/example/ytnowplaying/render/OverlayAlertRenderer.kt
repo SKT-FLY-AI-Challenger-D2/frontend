@@ -23,7 +23,7 @@ private const val TAG = "OverlayRenderer"
 
 class OverlayAlertRenderer(
     private val appCtx: Context,
-    private val autoDismissMs: Long = 8_000L, // showWarning() 기본값. (showModal/showBanner는 호출부에서 override 가능)
+    private val autoDismissMs: Long = 8_000L,
 ) : AlertRenderer {
 
     private val wm = appCtx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -47,9 +47,7 @@ class OverlayAlertRenderer(
     private var bannerBg: GradientDrawable? = null
     private var bannerBadgeBg: GradientDrawable? = null
 
-    // ✅ 기존 텍스트 심볼(⚠) 유지용
     private var bannerSymbolView: TextView? = null
-    // ✅ SAFE/NOT_AD 아이콘 표시용
     private var bannerSymbolIconView: ImageView? = null
 
     private var bannerTitleView: TextView? = null
@@ -132,7 +130,6 @@ class OverlayAlertRenderer(
     // ------------------------------------------------------------
 
     override fun showWarning(title: String, bodyLead: String?, onTap: (() -> Unit)?) {
-        // 기존 호출부 호환: showWarning = "위험" 모달(기본 8초)
         showModal(
             tone = Tone.DANGER,
             title = title,
@@ -180,8 +177,10 @@ class OverlayAlertRenderer(
     // ------------------------------------------------------------
 
     /**
-     * 딤+카드 형태(버튼모드 위험/주의, 백그라운드 위험)
-     * @param autoDismissOverrideMs 0이면 자동 제거 비활성
+     * 위험/주의 모달
+     * - title 위치에 쇼트 리포트(= bodyLead)를 출력
+     * - 그 아래에 “자세한 분석 결과를 확인하세요.”
+     * - 하단 “탭하여 보고서 보기”는 유지
      */
     fun showModal(
         tone: Tone,
@@ -195,7 +194,6 @@ class OverlayAlertRenderer(
             return
         }
 
-        // 모달을 띄우면 배너는 닫는다(겹치면 UX가 깨짐)
         clearBanner()
 
         modalOnTap = onTap
@@ -203,20 +201,24 @@ class OverlayAlertRenderer(
 
         val p = paletteOf(tone)
 
-        // 색상 반영
         iconCircleBg?.setColor(p.circleBg)
         iconView?.setColorFilter(p.accent)
         titleView?.setTextColor(p.accent)
 
-        // 텍스트
-        titleView?.text = title
-        val lead = bodyLead?.trim().takeIf { !it.isNullOrBlank() } ?: p.defaultLead
-        bodyView?.text = "$lead\n자세한 분석 결과를 확인하세요."
+        // ✅ 액션은 기존 “링크형”으로 복구
+        applyActionAsLink()
+        actionView?.text = "탭하여 보고서 보기"
 
-        // 딤 탭: 닫기
+        // ✅ 변경: title 위치에 쇼트 리포트 출력(없으면 title, 그래도 없으면 defaultLead)
+        val lead = bodyLead?.trim().takeIf { !it.isNullOrBlank() }
+            ?: title.trim().takeIf { it.isNotBlank() }
+            ?: p.defaultLead
+
+        titleView?.text = lead
+        bodyView?.text = "자세한 분석 결과를 확인하세요."
+
         rootView?.setOnClickListener { clearWarning() }
 
-        // 카드/하단 액션: 닫고 콜백
         val openCb = {
             val cb = modalOnTap
             clearWarning()
@@ -224,8 +226,6 @@ class OverlayAlertRenderer(
         }
         cardView?.setOnClickListener { openCb() }
         actionView?.setOnClickListener { openCb() }
-
-        // X 버튼: 닫기
         closeView?.setOnClickListener { clearWarning() }
 
         if (!isModalAdded) {
@@ -238,7 +238,6 @@ class OverlayAlertRenderer(
             }
         }
 
-        // 자동 제거
         main.removeCallbacks(removeModalRunnable)
         if (autoDismissOverrideMs > 0L) {
             main.postDelayed(removeModalRunnable, autoDismissOverrideMs)
@@ -246,9 +245,71 @@ class OverlayAlertRenderer(
     }
 
     /**
-     * 상단 배너(버튼모드 안전/광고아님, 백그라운드 주의)
-     * @param autoDismissMs 0이면 자동 제거 비활성
+     * ✅ 통신 오류 모달(요구사항)
+     * - 제목: "죄송합니다"
+     * - 본문: 통신 오류 안내
+     * - 버튼: "확인"(닫기)
+     * - X/딤 탭도 닫기
      */
+    fun showCommError(
+        title: String = "죄송합니다",
+        message: String = "통신 오류가 발생했습니다.\n다시 돋보기 버튼을 눌러주세요.",
+        buttonText: String = "확인",
+        autoDismissOverrideMs: Long = 0L, // 기본: 자동 닫힘 없음
+    ) {
+        if (!Settings.canDrawOverlays(appCtx)) {
+            Log.w(TAG, "No overlay permission.")
+            return
+        }
+
+        clearBanner()
+
+        modalOnTap = null
+        ensureModalView()
+
+        // 회색 톤
+        val circle = 0xFFE5E7EB.toInt()
+        val iconColor = 0xFF6B7280.toInt()
+        val titleColor = 0xFF111111.toInt()
+
+        iconCircleBg?.setColor(circle)
+        iconView?.apply {
+            // wifi-off 아이콘 리소스가 있으면 여기만 교체하면 됨
+            setImageResource(android.R.drawable.stat_notify_error)
+            setColorFilter(iconColor)
+        }
+
+        titleView?.setTextColor(titleColor)
+        titleView?.text = title
+
+        bodyView?.text = message
+
+        // 버튼형 액션
+        applyActionAsButton()
+        actionView?.text = buttonText
+
+        // 닫기 동작만
+        rootView?.setOnClickListener { clearWarning() }
+        cardView?.setOnClickListener { /* consume */ }
+        actionView?.setOnClickListener { clearWarning() }
+        closeView?.setOnClickListener { clearWarning() }
+
+        if (!isModalAdded) {
+            try {
+                wm.addView(rootView, buildModalLayoutParams())
+                isModalAdded = true
+            } catch (t: Throwable) {
+                Log.e(TAG, "add comm error modal failed: ${t.message}", t)
+                isModalAdded = false
+            }
+        }
+
+        main.removeCallbacks(removeModalRunnable)
+        if (autoDismissOverrideMs > 0L) {
+            main.postDelayed(removeModalRunnable, autoDismissOverrideMs)
+        }
+    }
+
     fun showBanner(
         tone: Tone,
         title: String,
@@ -261,7 +322,6 @@ class OverlayAlertRenderer(
             return
         }
 
-        // 배너를 띄우면 모달은 닫는다
         clearWarning()
 
         bannerOnTap = onTap
@@ -270,27 +330,28 @@ class OverlayAlertRenderer(
         val p = paletteOf(tone)
 
         bannerBg?.setColor(p.bannerBg)
-        // ✅ 보더를 “오른쪽 스샷처럼” 더 선명하게
         bannerBg?.setStroke(dp(1), alphaColor(p.accent, 0x66))
         bannerBadgeBg?.setColor(p.badgeBg)
 
-        // ✅ SAFE/NOT_AD는 아이콘, DANGER/CAUTION은 텍스트(⚠)
         val symbolText = bannerSymbolView
         val symbolIcon = bannerSymbolIconView
 
+        // ✅ FIX: 매 호출마다 심볼 상태를 먼저 리셋 (겹침/잔상 방지)
+        symbolText?.visibility = View.GONE
+        symbolText?.text = ""
+        symbolIcon?.visibility = View.GONE
+        symbolIcon?.setImageDrawable(null)
+
         when (tone) {
             Tone.SAFE -> {
-                symbolText?.visibility = View.GONE
                 symbolIcon?.visibility = View.VISIBLE
                 symbolIcon?.setImageResource(R.drawable.ic_cc)
             }
             Tone.NOT_AD -> {
-                symbolText?.visibility = View.GONE
                 symbolIcon?.visibility = View.VISIBLE
                 symbolIcon?.setImageResource(R.drawable.ic_sh)
             }
             Tone.DANGER, Tone.CAUTION -> {
-                symbolIcon?.visibility = View.GONE
                 symbolText?.visibility = View.VISIBLE
                 symbolText?.text = p.symbol
                 symbolText?.setTextColor(p.bannerText)
@@ -309,7 +370,6 @@ class OverlayAlertRenderer(
             cb?.invoke()
         }
 
-        // ✅ 배너 전체/보조문구 모두 탭 가능
         bannerView?.setOnClickListener { openCb() }
         bannerSubtitleView?.setOnClickListener { openCb() }
         bannerCloseView?.setOnClickListener { clearBanner() }
@@ -405,7 +465,7 @@ class OverlayAlertRenderer(
         iconCircle.addView(icon)
 
         val title = TextView(appCtx).apply {
-            textSize = 22f
+            textSize = 20f // (너가 20으로 줄였다고 했던 값 유지)
             setTextColor(0xFFFF3B30.toInt())
             setPadding(0, dp(12), 0, dp(18))
             gravity = Gravity.CENTER
@@ -448,27 +508,20 @@ class OverlayAlertRenderer(
         if (bannerView != null) return
 
         val dm = appCtx.resources.displayMetrics
-        // ✅ 좌우 여백이 느껴지도록 “폭을 꽉 채우지 말고” 제한
         bannerWidthPx = minOf((dm.widthPixels * 0.92f).toInt(), dp(380))
 
         val bg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dpF(14f)
             setColor(0xFFEAFBF1.toInt())
-            // stroke는 showBanner()에서 톤에 맞게 다시 설정
         }
 
         val root = LinearLayout(appCtx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = bg
-
-            // ✅ 오른쪽 스샷처럼 “두툼한” 패딩
             setPadding(dp(16), dp(12), dp(12), dp(12))
-
             isClickable = true
-
-            // ✅ 살짝 떠 보이게(그림자)
             ViewCompat.setElevation(this, dp(8).toFloat())
         }
 
@@ -481,13 +534,13 @@ class OverlayAlertRenderer(
             background = badgeBg
             layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                marginEnd = dp(12) // ✅ 아이콘-텍스트 간격
+                marginEnd = dp(12)
             }
         }
 
-        // ✅ 텍스트 심볼(⚠)용
         val symbolText = TextView(appCtx).apply {
-            text = "✓"
+            visibility = View.GONE
+            text = ""
             textSize = 14.5f
             setTextColor(0xFF16A34A.toInt())
             includeFontPadding = false
@@ -498,7 +551,6 @@ class OverlayAlertRenderer(
             typeface = Typeface.DEFAULT_BOLD
         }
 
-        // ✅ SAFE/NOT_AD 아이콘용 (기본은 숨김, showBanner에서 tone별로 노출)
         val symbolIcon = ImageView(appCtx).apply {
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(dp(18), dp(18)).apply {
@@ -516,7 +568,7 @@ class OverlayAlertRenderer(
 
         val title = TextView(appCtx).apply {
             text = "안전"
-            textSize = 15.5f  // ✅ 더 진하고 커 보이게
+            textSize = 15.5f
             setTextColor(0xFF16A34A.toInt())
             includeFontPadding = false
             typeface = Typeface.DEFAULT_BOLD
@@ -538,7 +590,6 @@ class OverlayAlertRenderer(
             textSize = 18f
             setTextColor(0xFF6B7280.toInt())
             includeFontPadding = false
-            // ✅ 오른쪽 스샷처럼 터치 영역 넓게
             setPadding(dp(10), dp(6), dp(10), dp(6))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -558,6 +609,49 @@ class OverlayAlertRenderer(
         bannerTitleView = title
         bannerSubtitleView = subtitle
         bannerCloseView = close
+    }
+
+    // -----------------------------
+    // Action styling helpers
+    // -----------------------------
+
+    private fun applyActionAsLink() {
+        actionView?.apply {
+            background = null
+            typeface = Typeface.DEFAULT
+            textSize = 12.5f
+            setTextColor(0xFF6B7280.toInt())
+            gravity = Gravity.CENTER
+            // 기존 레이아웃/간격 유지
+            setPadding(0, dp(24), 0, dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 0 }
+        }
+    }
+
+    private fun applyActionAsButton() {
+        actionView?.apply {
+            val bg = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dpF(12f)
+                setColor(0xFF374151.toInt())
+            }
+            background = bg
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = 14f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(18)
+            }
+            // 버튼 내부 패딩
+            setPadding(0, dp(12), 0, dp(12))
+        }
     }
 
     // ------------------------------------------------------------
@@ -606,7 +700,6 @@ class OverlayAlertRenderer(
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             x = 0
-            // ✅ 상태바 아래로 내려서 “오른쪽 스샷처럼” 위치 고정
             y = statusBarHeightPx() + dp(10)
         }
     }
