@@ -1,4 +1,3 @@
-// SettingsScreen.kt (전체 교체)
 package com.example.ytnowplaying.ui.screens
 
 import android.content.Intent
@@ -31,34 +30,39 @@ import com.example.ytnowplaying.AppContainer
 import com.example.ytnowplaying.R
 import com.example.ytnowplaying.overlay.OverlayController
 import com.example.ytnowplaying.permissions.PermissionChecker
+import com.example.ytnowplaying.prefs.AuthPrefs
 import com.example.ytnowplaying.prefs.ModePrefs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
 
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenLogin: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var bgEnabled by remember { mutableStateOf(ModePrefs.isBackgroundModeEnabled(ctx)) }
 
-    // 권한 상태(표시용)
     val hasNls by remember { mutableStateOf(PermissionChecker.hasNotificationListenerAccess(ctx)) }
     val hasOverlay by remember { mutableStateOf(PermissionChecker.hasOverlayPermission(ctx)) }
 
-    // ✅ 분석 기록 상태 구독 (0개 여부/즉시 갱신용)
     val repo = AppContainer.reportRepository
     val reports by repo.observeReports().collectAsState()
     val isEmpty = reports.isEmpty()
 
-    // ✅ 0개일 때 터치 피드백(색상 잠깐 진해졌다가 복귀)
+    // ✅ 로그인 상태
+    val session by AuthPrefs.session.collectAsState()
+    val isLoggedIn = session.isLoggedIn
+
     var emptyPulse by remember { mutableStateOf(false) }
     val clearCardBg by animateColorAsState(
         targetValue = when {
-            isEmpty && emptyPulse -> Color(0xFFE5E7EB) // 눌렀을 때 피드백
-            isEmpty -> Color(0xFFF3F4F6)              // 0개면 비활성 느낌
+            isEmpty && emptyPulse -> Color(0xFFE5E7EB)
+            isEmpty -> Color(0xFFF3F4F6)
             else -> Color.White
         },
         label = "clearCardBg"
@@ -101,7 +105,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "유튜브를 시청하는 동안 자동으로 영상\n을 분석합니다.",
+                            text = "유튜브를 시청하는 동안 \n자동으로 영상을 분석합니다.",
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
                             color = Color(0xFF6B7280)
@@ -114,13 +118,7 @@ fun SettingsScreen(
                         onCheckedChange = { newValue ->
                             bgEnabled = newValue
                             ModePrefs.setBackgroundModeEnabled(ctx, newValue)
-
-                            // ON: 플로팅 버튼 숨김 / OFF: 버튼 모드 복귀
-                            if (newValue) {
-                                OverlayController.stop(ctx)
-                            } else {
-                                // (현 구조 유지)
-                            }
+                            if (newValue) OverlayController.stop(ctx)
                         }
                     )
                 }
@@ -239,19 +237,18 @@ fun SettingsScreen(
                         .padding(horizontal = 16.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // ✅ 아이콘 배경(Box 배경)은 제거하고, ic_tb.png 자체 배경(연핑크)을 그대로 사용
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(999.dp)) // ✅ 완전 원형
-                            .background(Color(0xFFFFE4E6)),   // ✅ 스샷처럼 연핑크 원
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFFFFE4E6)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_tb),
                             contentDescription = null,
                             tint = Color.Unspecified,
-                            modifier = Modifier.size(20.dp) // ✅ 원 안에 들어가도록 적당히 축소
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -271,6 +268,75 @@ fun SettingsScreen(
                             color = subColor
                         )
                     }
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // ✅ 로그인 / 로그아웃 카드 (UI 생색용)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (!isLoggedIn) {
+                            onOpenLogin()
+                        } else {
+                            AuthPrefs.logout()
+                            Toast.makeText(ctx, "로그아웃 되었습니다.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val iconBg = if (!isLoggedIn) Color(0xFFDBEAFE) else Color(0xFFDBEAFE)
+                    val iconRes = if (!isLoggedIn) android.R.drawable.ic_input_get else android.R.drawable.ic_lock_power_off
+                    val title2 = if (!isLoggedIn) "로그인" else "로그아웃"
+                    val sub2 = if (!isLoggedIn) "계정에 로그인하기" else "계정에서 로그아웃하기"
+
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(iconBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = null,
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title2,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF111111)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = sub2,
+                            fontSize = 14.sp,
+                            color = Color(0xFF6B7280)
+                        )
+                    }
+
+                    Text(
+                        text = "→",
+                        fontSize = 18.sp,
+                        color = Color(0xFF9CA3AF)
+                    )
                 }
             }
         }

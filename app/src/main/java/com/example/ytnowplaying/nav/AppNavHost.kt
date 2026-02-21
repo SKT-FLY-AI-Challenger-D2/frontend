@@ -23,6 +23,8 @@ import com.example.ytnowplaying.ui.screens.SettingsScreen
 import com.example.ytnowplaying.ui.screens.TutorialScreen
 import com.example.ytnowplaying.ui.screens.SplashScreen
 import com.example.ytnowplaying.ui.screens.StartScreen
+import com.example.ytnowplaying.ui.screens.LoginScreen
+import com.example.ytnowplaying.ui.screens.RegisterScreen
 import kotlinx.coroutines.delay
 
 @Composable
@@ -33,12 +35,7 @@ fun AppNavHost(
 ) {
     val navController = rememberNavController()
 
-    val initialId = initialOpenReportId?.takeIf { it.isNotBlank() }
-
-    // ✅ startDestination은 "항상 고정" (인자 채운 route를 startDestination으로 쓰면 cold start에서 인자 전달이 깨짐)
     val startDestination = Routes.Splash
-
-    // ✅ 중복 navigate 방지 (saveable로 복원하지 않음)
     val lastHandledReportId = remember { mutableStateOf<String?>(null) }
 
     NavHost(
@@ -49,7 +46,6 @@ fun AppNavHost(
             val ctx = LocalContext.current
 
             LaunchedEffect(Unit) {
-                // ✅ 오버레이로 report를 열어야 하는 경우 Splash 자동 네비게이션 금지
                 if (!initialOpenReportId.isNullOrBlank()) return@LaunchedEffect
 
                 delay(500L)
@@ -118,7 +114,27 @@ fun AppNavHost(
         }
 
         composable(Routes.Settings) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenLogin = { navController.navigate(Routes.Login) }
+            )
+        }
+
+        // ✅ 신규: 로그인
+        composable(Routes.Login) {
+            LoginScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRegister = { navController.navigate(Routes.Register) },
+                onLoginSuccess = { navController.popBackStack() } // Settings로 복귀
+            )
+        }
+
+        // ✅ 신규: 회원가입
+        composable(Routes.Register) {
+            RegisterScreen(
+                onBack = { navController.popBackStack() },
+                onGoLogin = { navController.popBackStack() } // Login으로 복귀
+            )
         }
 
         composable(Routes.ReportHistory) {
@@ -134,7 +150,6 @@ fun AppNavHost(
         ) { backStackEntry ->
             val reportId = backStackEntry.arguments?.getString(Routes.ReportArgId).orEmpty()
 
-            // ✅ 이 reportId가 '오버레이로 전달된 reportId'와 같을 때만 overlay로 간주
             val launchedFromOverlayThis = (initialFromOverlay && initialOpenReportId == reportId)
             val alertTextThis = if (launchedFromOverlayThis) initialAlertText else null
 
@@ -148,13 +163,11 @@ fun AppNavHost(
             )
         }
 
-
         composable(Routes.Tutorial) {
             TutorialScreen(onBack = { navController.popBackStack() })
         }
     }
 
-    // ✅ warm start: onNewIntent로 reportId가 바뀌면 Report로 이동
     LaunchedEffect(initialOpenReportId, initialFromOverlay) {
         val id = initialOpenReportId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (lastHandledReportId.value == id) return@LaunchedEffect
@@ -162,7 +175,6 @@ fun AppNavHost(
 
         navController.navigate(Routes.report(id)) {
             launchSingleTop = true
-            // ❌ findStartDestination/popUpTo 사용 금지 (이번 크래시 원인)
         }
     }
 }

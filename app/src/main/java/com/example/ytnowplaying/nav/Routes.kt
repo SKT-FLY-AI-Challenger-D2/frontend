@@ -10,8 +10,11 @@ object Routes {
     const val Main = "main"
 
     const val ReportHistory = "report_history"
-
     const val Settings = "settings"
+
+    // ✅ 신규: 로그인/회원가입
+    const val Login = "login"
+    const val Register = "register"
 
     const val Report = "report"
     const val ReportArgId = "reportId"

@@ -1,15 +1,21 @@
 package com.example.ytnowplaying
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import com.example.ytnowplaying.nav.AppNavHost
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import com.example.ytnowplaying.nav.AppNavHost
+import androidx.compose.foundation.layout.navigationBars
+
 
 private const val TAG = "REALY_AI"
 
@@ -18,21 +24,18 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_REPORT_ID = "extra_open_report_id"
         const val EXTRA_FROM_OVERLAY = "extra_from_overlay"
-
         const val EXTRA_ALERT_TEXT = "extra_alert_text"
     }
-
 
     private var initialOpenReportId by mutableStateOf<String?>(null)
     private var initialFromOverlay by mutableStateOf(false)
     private var initialAlertText by mutableStateOf<String?>(null)
 
-
     private fun dumpOverlayIntent(tag: String, i: Intent?) {
         val id = i?.getStringExtra(EXTRA_OPEN_REPORT_ID)
         val from = i?.getBooleanExtra(EXTRA_FROM_OVERLAY, false)
         val alertLen = i?.getStringExtra(EXTRA_ALERT_TEXT)?.length ?: 0
-        android.util.Log.d("REALY_AI", "[$tag] openReportId=$id fromOverlay=$from alertLen=$alertLen")
+        android.util.Log.d(TAG, "[$tag] openReportId=$id fromOverlay=$from alertLen=$alertLen")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,11 +44,17 @@ class MainActivity : ComponentActivity() {
         consumeIntent(intent)
 
         setContent {
-            AppNavHost(
-                initialOpenReportId = initialOpenReportId,
-                initialFromOverlay = initialFromOverlay,
-                initialAlertText = initialAlertText,   // ✅ 추가
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+            ) {
+                AppNavHost(
+                    initialOpenReportId = initialOpenReportId,
+                    initialFromOverlay = initialFromOverlay,
+                    initialAlertText = initialAlertText,
+                )
+            }
         }
     }
 
@@ -57,7 +66,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeIntent(i: Intent) {
-        // ✅ 오버레이로 "보고서 열기" 인텐트가 아니면 상태를 덮어쓰지 않는다
         if (!i.hasExtra(EXTRA_OPEN_REPORT_ID)) {
             dumpOverlayIntent("ACT-ignoreIntent", i)
             return
@@ -67,5 +75,4 @@ class MainActivity : ComponentActivity() {
         initialFromOverlay = i.getBooleanExtra(EXTRA_FROM_OVERLAY, false)
         initialAlertText = i.getStringExtra(EXTRA_ALERT_TEXT)
     }
-
 }

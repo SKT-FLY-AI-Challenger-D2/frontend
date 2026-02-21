@@ -253,7 +253,7 @@ class OverlayAlertRenderer(
      */
     fun showCommError(
         title: String = "죄송합니다",
-        message: String = "통신 오류가 발생했습니다.\n다시 돋보기 버튼을 눌러주세요.",
+        message: String = "통신 오류가 발생했습니다.",
         buttonText: String = "확인",
         autoDismissOverrideMs: Long = 0L, // 기본: 자동 닫힘 없음
     ) {
