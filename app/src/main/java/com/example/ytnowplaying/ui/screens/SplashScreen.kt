@@ -60,7 +60,7 @@ fun SplashScreen() {
             Spacer(Modifier.height(18.dp))
 
             Text(
-                text = "영상의 진위를 검증하는\n스마트 AI 도우미",
+                text = "광고의 위험성을 분석하는\n스마트 AI 도우미",
                 color = subtitleGray,
                 fontSize = 18.sp,
                 lineHeight = 26.sp,

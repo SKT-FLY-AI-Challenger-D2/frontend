@@ -57,21 +57,21 @@ fun IntroScreen(
                 iconText = "👁",
                 iconBg = Color(0xFFE8F1FF),
                 title = "실시간 영상 분석",
-                desc = "AI가 영상을 실시간으로 분석하여 의심스러운 콘텐츠를 감지합니다."
+                desc = "AI가 영상을 실시간으로 분석하여 광고 영상의 위험도를 판단합니다."
             )
             Spacer(Modifier.height(22.dp))
             FeatureRow(
                 iconText = "🛡",
                 iconBg = Color(0xFFF2E9FF),
                 title = "신뢰할 수 있는 보호",
-                desc = "최신 딥페이크 탐지 기술로 가짜 영상을 걸러냅니다"
+                desc = "딥페이크 탐지 기술을 활용하여 AI 악용 영상을 걸러냅니다"
             )
             Spacer(Modifier.height(22.dp))
             FeatureRow(
                 iconText = "✓",
                 iconBg = Color(0xFFE9F9EF),
                 title = "상세한 분석 보고서",
-                desc = "감지된 문제에 대한 자세한 분석 결과를 제공합니다"
+                desc = "감지한 허위/사기 광고에 대한 자세한 분석 결과를 제공합니다"
             )
 
             Spacer(Modifier.weight(1f))

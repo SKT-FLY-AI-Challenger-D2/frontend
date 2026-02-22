@@ -130,9 +130,9 @@ fun SettingsScreen(
             val boxBg = if (bgEnabled) Color(0xFFEAF2FF) else Color(0xFFF3F4F6)
             val title = if (bgEnabled) "백그라운드 모드 활성화됨" else "백그라운드 모드 비활성화됨"
             val body = if (bgEnabled) {
-                "유튜브를 시청하는 동안 자동으로 영상을 분석합니다. 의심스러운 콘텐츠가 감지되면 즉시 알림을 받게 됩니다.\n\n플로팅 버튼이 숨겨집니다."
+                "유튜브를 시청하는 동안 자동으로 영상을 분석합니다. 위험한 광고가 감지되면 즉시 알림을 받게 됩니다.\n\n돋보기 버튼이 숨겨집니다."
             } else {
-                "수동 모드에서는 오른쪽 플로팅 버튼을 눌러 직접 영상 분석을 시작할 수 있습니다."
+                "수동 모드에서는 오른쪽 돋보기 버튼을 눌러 궁금한 영상에 대해서만 분석을 요청할 수 있습니다."
             }
 
             Column(
