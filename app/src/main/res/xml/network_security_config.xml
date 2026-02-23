@@ -2,6 +2,7 @@
 <network-security-config>
     <!-- 개발용: 에뮬레이터 로컬 백엔드(http://10.0.2.2:8000) 허용 -->
     <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">20.127.136.114</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">127.0.0.1</domain>

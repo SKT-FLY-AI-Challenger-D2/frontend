@@ -61,7 +61,7 @@ class FloatingButtonService : Service() {
     private var isAnalyzing = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val backend = BackendClient("http://10.0.2.2:8000/")
+    private val backend = BackendClient("http://20.127.136.114:8000/")
 
     private val alertRenderer by lazy {
         OverlayAlertRenderer(appCtx = applicationContext, autoDismissMs = 8_000L)
@@ -350,7 +350,7 @@ class FloatingButtonService : Service() {
                         Severity.DANGER -> {
                             alertRenderer.showModal(
                                 tone = OverlayAlertRenderer.Tone.DANGER,
-                                title = "! 영상에 문제가 있습니다",
+                                title = "위험한 영상입니다!",
                                 bodyLead = report.summary,
                                 autoDismissOverrideMs = 30_000L,
                             ) {
@@ -361,7 +361,7 @@ class FloatingButtonService : Service() {
                         Severity.CAUTION -> {
                             alertRenderer.showModal(
                                 tone = OverlayAlertRenderer.Tone.CAUTION,
-                                title = "! 주의가 필요합니다",
+                                title = "주의가 필요합니다!",
                                 bodyLead = report.summary,
                                 autoDismissOverrideMs = 8_000L,
                             ) {

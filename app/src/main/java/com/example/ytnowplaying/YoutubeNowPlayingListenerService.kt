@@ -57,7 +57,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     @Volatile private var latestSendingKey: String? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val backend = BackendClient("http://10.0.2.2:8000/")
+    private val backend = BackendClient("http://20.127.136.114:8000/")
 
     private val renderer by lazy {
         OverlayAlertRenderer(
@@ -373,7 +373,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                     Severity.DANGER -> {
                         renderer.showModal(
                             tone = OverlayAlertRenderer.Tone.DANGER,
-                            title = "! 영상에 문제가 있습니다",
+                            title = "위험한 영상입니다!",
                             bodyLead = summary,
                             autoDismissOverrideMs = 0L
                         ) {

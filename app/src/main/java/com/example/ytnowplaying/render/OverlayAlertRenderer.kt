@@ -8,6 +8,11 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -177,10 +182,10 @@ class OverlayAlertRenderer(
     // ------------------------------------------------------------
 
     /**
-     * 위험/주의 모달
-     * - title 위치에 쇼트 리포트(= bodyLead)를 출력
-     * - 그 아래에 “자세한 분석 결과를 확인하세요.”
-     * - 하단 “탭하여 보고서 보기”는 유지
+     * 위험/주의 모달 (롤백)
+     * - titleView: "! 위험한 영상입니다" / "! 주의가 필요합니다" (호출부 title 그대로)
+     * - bodyView: short report -> (줄 띄움) -> "자세한 분석 결과를 확인하세요."
+     * - short report만 약간 크게 + bold + 진한 색
      */
     fun showModal(
         tone: Tone,
@@ -205,17 +210,26 @@ class OverlayAlertRenderer(
         iconView?.setColorFilter(p.accent)
         titleView?.setTextColor(p.accent)
 
-        // ✅ 액션은 기존 “링크형”으로 복구
+        // 액션은 링크형 유지
         applyActionAsLink()
         actionView?.text = "탭하여 보고서 보기"
 
-        // ✅ 변경: title 위치에 쇼트 리포트 출력(없으면 title, 그래도 없으면 defaultLead)
-        val lead = bodyLead?.trim().takeIf { !it.isNullOrBlank() }
-            ?: title.trim().takeIf { it.isNotBlank() }
-            ?: p.defaultLead
+        // ✅ title은 그대로 표시
+        titleView?.text = title
 
-        titleView?.text = lead
-        bodyView?.text = "자세한 분석 결과를 확인하세요."
+        // ✅ short report는 body에서 첫 줄로 표시 (없으면 defaultLead)
+        val short = bodyLead?.trim().takeIf { !it.isNullOrBlank() } ?: p.defaultLead
+        val tail = "\n\n자세한 분석 결과를 확인하세요."
+        val full = short + tail
+
+        val sp = SpannableString(full).apply {
+            // short report만: 약간 크게 + bold + 진한 색
+            setSpan(RelativeSizeSpan(1.2f), 0, short.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(StyleSpan(Typeface.BOLD), 0, short.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(ForegroundColorSpan(0xFF111111.toInt()), 0, short.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            // 나머지(tail)는 bodyView 기본 색(#6B7280) 그대로 사용
+        }
+        bodyView?.text = sp
 
         rootView?.setOnClickListener { clearWarning() }
 
@@ -244,18 +258,11 @@ class OverlayAlertRenderer(
         }
     }
 
-    /**
-     * ✅ 통신 오류 모달(요구사항)
-     * - 제목: "죄송합니다"
-     * - 본문: 통신 오류 안내
-     * - 버튼: "확인"(닫기)
-     * - X/딤 탭도 닫기
-     */
     fun showCommError(
         title: String = "죄송합니다",
         message: String = "통신 오류가 발생했습니다.",
         buttonText: String = "확인",
-        autoDismissOverrideMs: Long = 0L, // 기본: 자동 닫힘 없음
+        autoDismissOverrideMs: Long = 0L,
     ) {
         if (!Settings.canDrawOverlays(appCtx)) {
             Log.w(TAG, "No overlay permission.")
@@ -267,14 +274,12 @@ class OverlayAlertRenderer(
         modalOnTap = null
         ensureModalView()
 
-        // 회색 톤
         val circle = 0xFFE5E7EB.toInt()
         val iconColor = 0xFF6B7280.toInt()
         val titleColor = 0xFF111111.toInt()
 
         iconCircleBg?.setColor(circle)
         iconView?.apply {
-            // wifi-off 아이콘 리소스가 있으면 여기만 교체하면 됨
             setImageResource(android.R.drawable.stat_notify_error)
             setColorFilter(iconColor)
         }
@@ -284,11 +289,9 @@ class OverlayAlertRenderer(
 
         bodyView?.text = message
 
-        // 버튼형 액션
         applyActionAsButton()
         actionView?.text = buttonText
 
-        // 닫기 동작만
         rootView?.setOnClickListener { clearWarning() }
         cardView?.setOnClickListener { /* consume */ }
         actionView?.setOnClickListener { clearWarning() }
@@ -336,7 +339,6 @@ class OverlayAlertRenderer(
         val symbolText = bannerSymbolView
         val symbolIcon = bannerSymbolIconView
 
-        // ✅ FIX: 매 호출마다 심볼 상태를 먼저 리셋 (겹침/잔상 방지)
         symbolText?.visibility = View.GONE
         symbolText?.text = ""
         symbolIcon?.visibility = View.GONE
@@ -465,7 +467,7 @@ class OverlayAlertRenderer(
         iconCircle.addView(icon)
 
         val title = TextView(appCtx).apply {
-            textSize = 20f // (너가 20으로 줄였다고 했던 값 유지)
+            textSize = 26f
             setTextColor(0xFFFF3B30.toInt())
             setPadding(0, dp(12), 0, dp(18))
             gravity = Gravity.CENTER
@@ -622,7 +624,6 @@ class OverlayAlertRenderer(
             textSize = 12.5f
             setTextColor(0xFF6B7280.toInt())
             gravity = Gravity.CENTER
-            // 기존 레이아웃/간격 유지
             setPadding(0, dp(24), 0, dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -646,10 +647,7 @@ class OverlayAlertRenderer(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp(18)
-            }
-            // 버튼 내부 패딩
+            ).apply { topMargin = dp(18) }
             setPadding(0, dp(12), 0, dp(12))
         }
     }

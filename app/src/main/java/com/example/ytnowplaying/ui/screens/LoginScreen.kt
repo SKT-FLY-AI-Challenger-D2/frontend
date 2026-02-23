@@ -37,7 +37,7 @@ fun LoginScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val userClient = remember { UserClient("http://10.0.2.2:8000/") }
+    val userClient = remember { UserClient("http://20.127.136.114:8000/") }
 
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
