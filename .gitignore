@@ -42,3 +42,7 @@ replay_pid*
 .externalNativeBuild
 .cxx
 local.properties
+
+# 비밀·개인 정보 (TASK-02)
+info.txt
+.env

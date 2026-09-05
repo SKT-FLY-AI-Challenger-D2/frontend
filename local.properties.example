@@ -1,0 +1,8 @@
+# Frontend 로컬 설정 예제 (TASK-02)
+# 실제 값은 이 파일에 적지 않는다. local.properties에 복사해서 채운다(gitignore 대상).
+# sdk.dir은 Android Studio가 자동으로 채워준다.
+
+sdk.dir=YOUR_ANDROID_SDK_PATH
+
+# TASK-03에서 하드코딩된 Kotlin 내 주소를 이 값으로 대체할 예정
+BACKEND_BASE_URL=http://YOUR_BACKEND_HOST:8000
