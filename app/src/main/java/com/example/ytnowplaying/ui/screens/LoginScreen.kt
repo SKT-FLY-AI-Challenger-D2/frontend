@@ -1,6 +1,7 @@
 package com.example.ytnowplaying.ui.screens
 
 import android.widget.Toast
+import com.example.ytnowplaying.config.BackendConfig
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,7 +38,7 @@ fun LoginScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val userClient = remember { UserClient("http://20.127.136.114:8000/") }
+    val userClient = remember { UserClient(BackendConfig.baseUrl) }
 
     var userId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }

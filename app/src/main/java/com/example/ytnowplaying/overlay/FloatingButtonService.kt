@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import com.example.ytnowplaying.config.BackendConfig
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -61,7 +62,7 @@ class FloatingButtonService : Service() {
     private var isAnalyzing = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val backend = BackendClient("http://20.127.136.114:8000/")
+    private val backend = BackendClient(BackendConfig.baseUrl)
 
     private val alertRenderer by lazy {
         OverlayAlertRenderer(appCtx = applicationContext, autoDismissMs = 8_000L)

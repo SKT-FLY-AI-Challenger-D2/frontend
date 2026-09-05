@@ -19,6 +19,9 @@
 *.tar.gz
 *.rar
 
+# Gradle Wrapper JAR는 깨끗한 빌드에 필요하므로 예외 처리한다 (TASK-03)
+!gradle/wrapper/gradle-wrapper.jar
+
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*

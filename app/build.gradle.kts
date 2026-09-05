@@ -1,8 +1,35 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     // Kotlin 2.0+에서는 Compose Compiler Gradle plugin 사용 권장 :contentReference[oaicite:1]{index=1}
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// local.properties 또는 -P Gradle 프로퍼티에서 BACKEND_BASE_URL을 읽는다 (TASK-03).
+// 둘 다 없으면 에뮬레이터가 호스트 로컬 서버를 가리키는 개발 기본값만 허용한다.
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun resolveBackendBaseUrl(): String {
+    val fromProject = providers.gradleProperty("BACKEND_BASE_URL").orNull
+    val fromLocal = localProperties.getProperty("BACKEND_BASE_URL")
+    return fromProject ?: fromLocal ?: "http://10.0.2.2:8000/"
+}
+
+fun resolveGitCommit(): String {
+    return try {
+        providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText.get().trim()
+    } catch (e: Exception) {
+        "unknown"
+    }
 }
 
 android {
@@ -16,6 +43,9 @@ android {
         versionCode = 1
         versionName = "0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "BACKEND_BASE_URL", "\"${resolveBackendBaseUrl()}\"")
+        buildConfigField("String", "GIT_COMMIT", "\"${resolveGitCommit()}\"")
     }
 
     buildTypes {
@@ -26,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     compileOptions {

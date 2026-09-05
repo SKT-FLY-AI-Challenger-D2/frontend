@@ -10,6 +10,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.util.Log
+import com.example.ytnowplaying.config.BackendConfig
 import com.example.ytnowplaying.data.BackendClient
 import com.example.ytnowplaying.data.report.Report
 import com.example.ytnowplaying.data.report.Severity
@@ -57,7 +58,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
     @Volatile private var latestSendingKey: String? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val backend = BackendClient("http://20.127.136.114:8000/")
+    private val backend = BackendClient(BackendConfig.baseUrl)
 
     private val renderer by lazy {
         OverlayAlertRenderer(
