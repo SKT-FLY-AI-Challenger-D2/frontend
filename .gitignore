@@ -49,3 +49,7 @@ local.properties
 # 비밀·개인 정보 (TASK-02)
 info.txt
 .env
+
+# IDE (TASK: 하우스키핑 2026-09-09)
+.idea/
+.vscode/
