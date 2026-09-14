@@ -353,8 +353,12 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             return
         }
 
+        val flowId = FlowLog.newFlowId()
+
         // 요청 시작 직전 검사 (§6.4 삼중 검사 ①)
-        if (!isAppTaskAlive(applicationContext)) return
+        val alive1 = isAppTaskAlive(applicationContext)
+        FlowLog.event(flowId, "auto", "check1_before_request", alive1)
+        if (!alive1) return
 
         lastSentKey = stableKey
         lastSentAtMs = now2
@@ -371,7 +375,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
                     null
                 }
             },
-            onOutcome = { _, apiRes -> handleAnalyzeOutcome(stableKey, info, ch, apiRes) },
+            onOutcome = { _, apiRes -> handleAnalyzeOutcome(flowId, stableKey, info, ch, apiRes) },
             onDedupRestore = { key ->
                 if (lastSentKey == key) {
                     lastSentKey = null
@@ -387,6 +391,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
      * 두 지점 모두 isAppTaskAlive() 를 재확인한다(§6.4 삼중 검사 ②③).
      */
     private suspend fun handleAnalyzeOutcome(
+        flowId: String,
         stableKey: String,
         info: NowPlayingInfo,
         channel: String,
@@ -396,7 +401,9 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
         if (apiRes == null) {
             withContext(Dispatchers.Main) {
-                if (!isAppTaskAlive(applicationContext)) return@withContext
+                val alive = isAppTaskAlive(applicationContext)
+                FlowLog.event(flowId, "auto", "check_before_comm_error", alive)
+                if (!alive) return@withContext
                 renderer.showCommError()
                 applied = true
             }
@@ -404,7 +411,9 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         }
 
         // 응답 수신 직후 검사 (§6.4 ②)
-        if (!isAppTaskAlive(applicationContext)) return false
+        val alive2 = isAppTaskAlive(applicationContext)
+        FlowLog.event(flowId, "auto", "check2_after_response", alive2)
+        if (!alive2) return false
 
         val severity = when (apiRes.finalRiskLevel ?: 1) {
             9 -> Severity.NOT_AD
@@ -447,7 +456,9 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
         withContext(Dispatchers.Main) {
             // 저장 직전 검사 (§6.4 ③)
-            if (!isAppTaskAlive(applicationContext)) return@withContext
+            val alive3 = isAppTaskAlive(applicationContext)
+            FlowLog.event(flowId, "auto", "check3_before_save", alive3)
+            if (!alive3) return@withContext
 
             Log.d(
                 TAG,
@@ -458,6 +469,13 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             applied = true
 
             Log.d(TAG, "[SAVE-DONE] reportId=$reportId stableKey=$stableKey")
+
+            // 표시 직전 재검사(신규) — saveReport() 실행 중 task 제거 대응. applied 는 이미
+            // true 로 확정됐으므로(저장 자체는 완료됨, F15 dedup 원칙엔 영향 없음) 건드리지
+            // 않고, 오직 "제거된 앱에 경고 UI가 뜨는 것"만 여기서 차단한다.
+            val aliveDisp = isAppTaskAlive(applicationContext)
+            FlowLog.event(flowId, "auto", "check_before_display", aliveDisp)
+            if (!aliveDisp) return@withContext
 
             when (severity) {
                 Severity.DANGER -> {

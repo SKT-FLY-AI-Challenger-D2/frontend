@@ -21,6 +21,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.ViewCompat
 import com.example.ytnowplaying.AppContainer
+import com.example.ytnowplaying.FlowLog
 import com.example.ytnowplaying.MainActivity
 import com.example.ytnowplaying.data.BackendClient
 import com.example.ytnowplaying.data.report.Report
@@ -329,8 +330,12 @@ class FloatingButtonService : Service() {
             return
         }
 
+        val flowId = FlowLog.newFlowId()
+
         // 요청 시작 직전 검사 (계획서 §6.4 삼중 검사 ①)
-        if (!isAppTaskAlive(applicationContext)) return
+        val alive1 = isAppTaskAlive(applicationContext)
+        FlowLog.event(flowId, "manual", "check1_before_request", alive1)
+        if (!alive1) return
 
         setButtonLoading(true)
 
@@ -352,10 +357,16 @@ class FloatingButtonService : Service() {
                 }
 
                 // 응답 수신 직후 검사 (계획서 §6.4 삼중 검사 ②) — 에러 응답 표시 전에도 적용
-                if (!isAppTaskAlive(applicationContext)) return@launch
+                val alive2 = isAppTaskAlive(applicationContext)
+                FlowLog.event(flowId, "manual", "check2_after_response", alive2)
+                if (!alive2) return@launch
 
                 if (apiRes == null) {
                     withContext(Dispatchers.Main) {
+                        // 표시 직전 재검사(신규) — Main 디스패처 전환 사이 task 제거 대응
+                        val aliveErr = isAppTaskAlive(applicationContext)
+                        FlowLog.event(flowId, "manual", "check_before_comm_error", aliveErr)
+                        if (!aliveErr) return@withContext
                         alertRenderer.showCommError(
                             title = "죄송합니다",
                             message = "통신 오류가 발생했습니다.\n다시 돋보기 버튼을 눌러주세요.",
@@ -410,13 +421,22 @@ class FloatingButtonService : Service() {
                 )
 
                 // 저장 직전 검사 (계획서 §6.4 삼중 검사 ③)
-                if (!isAppTaskAlive(applicationContext)) return@launch
+                val alive3 = isAppTaskAlive(applicationContext)
+                FlowLog.event(flowId, "manual", "check3_before_save", alive3)
+                if (!alive3) return@launch
 
                 // ✅ 저장은 IO(현재 코루틴 컨텍스트)에서 수행
                 AppContainer.reportRepository.saveReport(report)
 
                 // ✅ 오버레이/Activity는 Main에서 처리
                 withContext(Dispatchers.Main) {
+                    // 표시 직전 재검사(신규) — saveReport() 실행 중 task 제거 대응. 저장 자체는
+                    // 이미 완료됐으므로(F12 dedup 원칙과 무관, 수동분석엔 dedup 복원 대상이 없음)
+                    // 여기서 막는 건 오직 "제거된 앱의 결과 UI가 뜨는 것"만 차단하기 위함이다.
+                    val aliveDisp = isAppTaskAlive(applicationContext)
+                    FlowLog.event(flowId, "manual", "check_before_display", aliveDisp)
+                    if (!aliveDisp) return@withContext
+
                     when (severity) {
                         Severity.DANGER -> {
                             alertRenderer.showModal(
