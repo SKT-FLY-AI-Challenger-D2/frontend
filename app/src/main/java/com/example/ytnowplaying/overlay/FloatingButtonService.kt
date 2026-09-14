@@ -426,10 +426,13 @@ class FloatingButtonService : Service() {
                 FlowLog.event(flowId, "manual", "check3_before_save", alive3)
                 if (!alive3) return@launch
 
-                // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍어, 검사~저장호출
-                // 사이 예상 밖 지연(suspend 재스케줄 등)이 있었는지 로그만으로 재구성 가능하게 한다.
+                // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍는다. 이 값은
+                // check3보다 saveReport() 호출에 더 가까운 시점이므로 "저장 직전 검사" 그
+                // 자체이며, 로그만 남기고 흘려보내면 검사와 실제 저장 사이 방어가 끊긴다 —
+                // 반드시 이 값으로 게이트한다(2차 리뷰 지적 수정).
                 val aliveSaveEnter = isAppTaskAlive(applicationContext)
                 FlowLog.event(flowId, "manual", "save_enter", aliveSaveEnter)
+                if (!aliveSaveEnter) return@launch
 
                 // ✅ 저장은 IO(현재 코루틴 컨텍스트)에서 수행
                 AppContainer.reportRepository.saveReport(report)

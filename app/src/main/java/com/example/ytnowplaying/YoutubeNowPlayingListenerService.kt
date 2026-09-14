@@ -473,9 +473,13 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             FlowLog.event(flowId, "auto", "check3_before_save", alive3)
             if (!alive3) return@withContext
 
-            // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍는다.
+            // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍는다. 이 값은 check3보다
+            // saveReport() 호출에 더 가까운 시점이므로 "저장 직전 검사" 그 자체이며, 로그만 남기고
+            // 흘려보내면 검사와 실제 저장 사이 방어가 끊긴다 — 반드시 이 값으로 게이트한다
+            // (2차 리뷰 지적 수정).
             val aliveSaveEnter = isAppTaskAlive(applicationContext)
             FlowLog.event(flowId, "auto", "save_enter", aliveSaveEnter)
+            if (!aliveSaveEnter) return@withContext
 
             Log.d(
                 TAG,
