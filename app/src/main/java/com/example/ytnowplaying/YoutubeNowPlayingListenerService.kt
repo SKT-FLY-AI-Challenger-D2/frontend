@@ -69,6 +69,10 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
 
     // HIDE 전송용 로컬 dedup: UNKNOWN/SHOW/HIDE 3값(F9). null = UNKNOWN.
     private var lastSentAction: OverlayAction? = null
+
+    // §6.4 task_removal_detected 로그의 전이(alive->removed) 감지 전용 — null=아직 모름.
+    // OverlayAction dedup(lastSentAction) 과는 별개 목적이라 필드를 공유하지 않는다.
+    private var lastTaskAliveLogged: Boolean? = null
     private var stopButtonRunnable: Runnable? = null
 
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
@@ -201,7 +205,15 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
      * grace(HIDE 전환에만)·전송 dedup(F9)을 거쳐 적용한다.
      */
     private fun reevaluateAndApply() {
-        if (!isAppTaskAlive(applicationContext)) {
+        val taskAlive = isAppTaskAlive(applicationContext)
+        if (!taskAlive) {
+            // §6.4 "task 제거 감지 시각" — pollingRunnable 이 task 제거 상태에서도 계속 재스케줄되므로
+            // (V7 지원) 매 틱 로그를 남기면 스팸이 된다. alive->removed 전이 시 한 번만 기록한다.
+            if (lastTaskAliveLogged != false) {
+                FlowLog.taskRemovalDetected("auto", "reevaluateAndApply")
+            }
+            lastTaskAliveLogged = false
+
             suspendMediaObservation()
             stopButtonRunnable?.let { mainHandler.removeCallbacks(it) }
             stopButtonRunnable = null
@@ -211,6 +223,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             }
             return
         }
+        lastTaskAliveLogged = true
 
         val cn = ComponentName(this, YoutubeNowPlayingListenerService::class.java)
         val controllers = try {
@@ -353,7 +366,7 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             return
         }
 
-        val flowId = FlowLog.newFlowId()
+        val flowId = FlowLog.newFlowId("auto")
 
         // 요청 시작 직전 검사 (§6.4 삼중 검사 ①)
         val alive1 = isAppTaskAlive(applicationContext)
@@ -459,6 +472,10 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
             val alive3 = isAppTaskAlive(applicationContext)
             FlowLog.event(flowId, "auto", "check3_before_save", alive3)
             if (!alive3) return@withContext
+
+            // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍는다.
+            val aliveSaveEnter = isAppTaskAlive(applicationContext)
+            FlowLog.event(flowId, "auto", "save_enter", aliveSaveEnter)
 
             Log.d(
                 TAG,

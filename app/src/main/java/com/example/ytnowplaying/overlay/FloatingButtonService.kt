@@ -98,6 +98,7 @@ class FloatingButtonService : Service() {
         override fun run() {
             if (!isAppTaskAlive(applicationContext)) {
                 android.util.Log.i(TAG, "task removed -> hide + cancel analysis + stopSelf")
+                FlowLog.taskRemovalDetected("manual", "taskPollRunnable")
                 hideButton()
                 analysisJob?.cancel()
                 analysisJob = null
@@ -330,7 +331,7 @@ class FloatingButtonService : Service() {
             return
         }
 
-        val flowId = FlowLog.newFlowId()
+        val flowId = FlowLog.newFlowId("manual")
 
         // 요청 시작 직전 검사 (계획서 §6.4 삼중 검사 ①)
         val alive1 = isAppTaskAlive(applicationContext)
@@ -424,6 +425,11 @@ class FloatingButtonService : Service() {
                 val alive3 = isAppTaskAlive(applicationContext)
                 FlowLog.event(flowId, "manual", "check3_before_save", alive3)
                 if (!alive3) return@launch
+
+                // §6.4 요구 이벤트: saveReport() 진입 자체를 검사와 별개로 찍어, 검사~저장호출
+                // 사이 예상 밖 지연(suspend 재스케줄 등)이 있었는지 로그만으로 재구성 가능하게 한다.
+                val aliveSaveEnter = isAppTaskAlive(applicationContext)
+                FlowLog.event(flowId, "manual", "save_enter", aliveSaveEnter)
 
                 // ✅ 저장은 IO(현재 코루틴 컨텍스트)에서 수행
                 AppContainer.reportRepository.saveReport(report)
