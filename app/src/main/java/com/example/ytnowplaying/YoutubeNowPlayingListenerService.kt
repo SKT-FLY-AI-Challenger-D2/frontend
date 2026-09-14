@@ -127,9 +127,15 @@ class YoutubeNowPlayingListenerService : NotificationListenerService() {
         super.onListenerConnected()
         Log.i(TAG, "NotificationListener connected")
 
-        // 재바인딩 시 중복 등록 방지 — 기존 폴링/prefs 리스너를 먼저 제거한 뒤 재등록 (F7)
+        // 재바인딩 시 중복 등록 방지 — 기존 폴링/prefs/activeSessions 리스너를 먼저 제거한 뒤
+        // 재등록 (F7). activeSessionsListener 는 이전엔 이 패턴에서 빠져 있었다 — 실기기 검증
+        // (재연결 최대 8회 반복 후에도 [YT-SESSION] changed 로그 배수 증가 없음)으로 현재 Android
+        // 구현이 동일 리스너 객체 중복 등록을 내부적으로 막아준다는 걸 확인했지만, 이는 문서화된
+        // API 계약이 아니라 암묵적 동작이므로 명시적으로 해제 후 재등록해 다른 컴포넌트와 패턴을
+        // 통일한다(3차 리뷰 제안 반영).
         mainHandler.removeCallbacks(pollingRunnable)
         prefsListener?.let { sharedPrefs.unregisterOnSharedPreferenceChangeListener(it) }
+        try { msm?.removeOnActiveSessionsChangedListener(activeSessionsListener) } catch (_: Throwable) {}
 
         msm = getSystemService(MediaSessionManager::class.java)
         val cn = ComponentName(this, YoutubeNowPlayingListenerService::class.java)
