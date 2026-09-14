@@ -28,10 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ytnowplaying.AppContainer
 import com.example.ytnowplaying.R
-import com.example.ytnowplaying.overlay.OverlayController
 import com.example.ytnowplaying.permissions.PermissionChecker
 import com.example.ytnowplaying.prefs.AuthPrefs
 import com.example.ytnowplaying.prefs.ModePrefs
+import com.example.ytnowplaying.prefs.MonitoringPrefs
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.res.painterResource
@@ -46,6 +46,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     var bgEnabled by remember { mutableStateOf(ModePrefs.isBackgroundModeEnabled(ctx)) }
+    var manualButtonEnabled by remember { mutableStateOf(MonitoringPrefs.isManualButtonEnabled(ctx)) }
 
     val hasNls by remember { mutableStateOf(PermissionChecker.hasNotificationListenerAccess(ctx)) }
     val hasOverlay by remember { mutableStateOf(PermissionChecker.hasOverlayPermission(ctx)) }
@@ -117,10 +118,57 @@ fun SettingsScreen(
                         modifier = Modifier.scale(1.10f),
                         onCheckedChange = { newValue ->
                             bgEnabled = newValue
+                            // prefs만 쓴다 — 오버레이 제어는 항상 YoutubeNowPlayingListenerService의
+                            // reevaluateAndApply()가 prefs 변경 감지로 처리한다(명령권 분산 방지).
                             ModePrefs.setBackgroundModeEnabled(ctx, newValue)
-                            if (newValue) OverlayController.stop(ctx)
                         }
                     )
+                }
+            }
+
+            if (!bgEnabled) {
+                Spacer(Modifier.height(14.dp))
+
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "🔍", fontSize = 22.sp)
+                        Spacer(Modifier.width(10.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "돋보기 버튼 표시",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF111111)
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = "유튜브 재생 중 돋보기 버튼을 표시합니다.\n꺼두면 수동 분석도 요청할 수 없습니다.",
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                color = Color(0xFF6B7280)
+                            )
+                        }
+
+                        Switch(
+                            checked = manualButtonEnabled,
+                            modifier = Modifier.scale(1.10f),
+                            onCheckedChange = { newValue ->
+                                manualButtonEnabled = newValue
+                                MonitoringPrefs.setManualButtonEnabled(ctx, newValue)
+                            }
+                        )
+                    }
                 }
             }
 
