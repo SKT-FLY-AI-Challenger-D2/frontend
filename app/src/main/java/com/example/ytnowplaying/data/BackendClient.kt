@@ -2,6 +2,7 @@ package com.example.ytnowplaying.data
 
 import android.util.Log
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -72,6 +73,10 @@ class BackendClient(baseUrl: String) {
             Log.v(TAG, "[RES-RAW /api/videos/analysis] ${gson.toJson(res).take(2000)}")
 
             res
+        } catch (e: CancellationException) {
+            // 구조적 취소(예: task 제거로 인한 Job.cancel())는 통신 오류로 취급하지 않고
+            // 그대로 다시 던져 정상적으로 코루틴이 취소되게 한다(계획서 F13).
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "[API] analyze failed: ${e.message}", e)
             null

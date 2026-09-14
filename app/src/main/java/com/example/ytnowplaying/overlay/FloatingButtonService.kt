@@ -25,10 +25,13 @@ import com.example.ytnowplaying.MainActivity
 import com.example.ytnowplaying.data.BackendClient
 import com.example.ytnowplaying.data.report.Report
 import com.example.ytnowplaying.data.report.Severity
+import com.example.ytnowplaying.isAppTaskAlive
 import com.example.ytnowplaying.nowplaying.NowPlayingCache
 import com.example.ytnowplaying.render.OverlayAlertRenderer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -42,6 +45,7 @@ class FloatingButtonService : Service() {
     companion object {
         private const val TAG = "REALY_AI"
         private const val AUTO_STOP_AFTER_HIDE_MS = 30_000L
+        private const val TASK_POLL_INTERVAL_MS = 5_000L
         private const val NOT_AD_SUMMARY = "이 영상은 광고성 콘텐츠가 아닌 일반 영상으로 판단됩니다."
     }
 
@@ -61,6 +65,12 @@ class FloatingButtonService : Service() {
     @Volatile
     private var isAnalyzing = false
 
+    // HIDE 유휴 타이머(자원위생, 30초) 예약 여부 — task-poll(신뢰)과는 별개 메커니즘 (계획서 §6.3)
+    private var autoStopScheduled = false
+
+    // 진행 중인 수동분석 Job. task 제거 시 이 Job만 취소하고 scope 자체는 살려둔다(계획서 F8).
+    private var analysisJob: Job? = null
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val backend = BackendClient(BackendConfig.baseUrl)
 
@@ -68,8 +78,36 @@ class FloatingButtonService : Service() {
         OverlayAlertRenderer(appCtx = applicationContext, autoDismissMs = 8_000L)
     }
 
-    private val autoStopRunnable = Runnable {
-        if (!added) stopSelf()
+    // 명시적 타입 필요: 이 Runnable이 자기 자신(autoStopRunnable)을 본문에서 참조하므로,
+    // 타입을 초기화식에서 추론하게 두면 코틀린이 "recursive problem"으로 컴파일 실패한다.
+    private val autoStopRunnable: Runnable = Runnable {
+        if (isAnalyzing) {
+            // 진행 중인 분석이 있으면 종료를 미루고 같은 지연으로 재예약한다(자원위생 목적,
+            // 신뢰 요구와는 무관 — 계획서 §6.3).
+            main.postDelayed(autoStopRunnable, AUTO_STOP_AFTER_HIDE_MS)
+        } else {
+            autoStopScheduled = false
+            stopSelf()
+        }
+    }
+
+    // 5초 self-reschedule task-poll. isAppTaskAlive() 를 직접 조회해 task 제거를 즉시 감지한다
+    // (계획서 §6.2 F0, C21 대응 — 배경모드에서도 이 서비스가 떠 있는 동안은 독립적으로 확인).
+    private val taskPollRunnable = object : Runnable {
+        override fun run() {
+            if (!isAppTaskAlive(applicationContext)) {
+                android.util.Log.i(TAG, "task removed -> hide + cancel analysis + stopSelf")
+                hideButton()
+                analysisJob?.cancel()
+                analysisJob = null
+                setButtonLoading(false)
+                main.removeCallbacks(autoStopRunnable)
+                autoStopScheduled = false
+                stopSelf()
+                return // 서비스가 종료되는 중이므로 재예약하지 않는다.
+            }
+            main.postDelayed(this, TASK_POLL_INTERVAL_MS)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -77,6 +115,9 @@ class FloatingButtonService : Service() {
     override fun onCreate() {
         super.onCreate()
         android.util.Log.i(TAG, "FloatingButtonService onCreate")
+        // onStartCommand()는 SHOW/HIDE마다 반복 호출되므로 폴링은 onCreate()에서만 시작한다
+        // (계획서 F10 — 중복 등록 방지).
+        main.postDelayed(taskPollRunnable, TASK_POLL_INTERVAL_MS)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -85,12 +126,17 @@ class FloatingButtonService : Service() {
         when {
             OverlayController.isShowAction(action) -> {
                 main.removeCallbacks(autoStopRunnable)
+                autoStopScheduled = false
                 showButton()
             }
             OverlayController.isHideAction(action) -> {
                 hideButton()
-                main.removeCallbacks(autoStopRunnable)
-                main.postDelayed(autoStopRunnable, AUTO_STOP_AFTER_HIDE_MS)
+                if (!autoStopScheduled) {
+                    main.postDelayed(autoStopRunnable, AUTO_STOP_AFTER_HIDE_MS)
+                    autoStopScheduled = true
+                }
+                // 이미 예약돼 있으면 그대로 둔다 — added 이전 값을 볼 필요가 없어, 서비스가
+                // 신규 생성된 채로 HIDE만 받는 경우에도 타이머가 정확히 한 번 걸린다(계획서 C11).
             }
         }
 
@@ -99,6 +145,7 @@ class FloatingButtonService : Service() {
 
     override fun onDestroy() {
         main.removeCallbacks(autoStopRunnable)
+        main.removeCallbacks(taskPollRunnable)
         setButtonLoading(false)
         hideButton()
         scope.cancel()
@@ -130,7 +177,14 @@ class FloatingButtonService : Service() {
     }
 
     private fun addFloatingButton() {
-        if (added && buttonView?.isAttachedToWindow == true) {
+        // ⚠️ 가드는 added 단독으로만 건다. wm.addView() 는 호출이 반환돼도 View 가 실제로
+        // isAttachedToWindow==true 가 되는 시점은 다음 레이아웃 패스로 밀릴 수 있어(비동기),
+        // 매우 짧은 간격(수 ms)으로 SHOW 가 연달아 오면 그 창에서 이 조건이 뚫려 addView() 가
+        // 두 번 실행되고 오버레이 창이 중복 생성되는 실결함이 실기기 검증(V8)에서 재현됐다.
+        // added 는 addView() 성공 직후 이 함수 안에서 동기적으로 true 가 되고(중간에 다른
+        // 메인스레드 메시지가 끼어들 수 없음), removeFloatingButton() 에서만 false 로 돌아오므로
+        // 단독 가드로 충분하다.
+        if (added) {
             android.util.Log.i(TAG, "button already attached -> skip")
             return
         }
@@ -233,11 +287,13 @@ class FloatingButtonService : Service() {
 
     private fun setButtonLoading(loading: Boolean) {
         main.post {
+            // 상태 갱신은 view 존재 여부와 무관하게 항상 먼저 수행한다(계획서 F20-b) — view가
+            // 이미 없어도(예: hideButton() 직후) isAnalyzing 은 반드시 갱신돼야 한다.
+            isAnalyzing = loading
+
             val v = buttonView ?: return@post
             val icon = buttonIcon ?: return@post
             val pb = buttonProgress ?: return@post
-
-            isAnalyzing = loading
 
             v.isEnabled = !loading
             v.alpha = if (loading) LOADING_ALPHA else BASE_ALPHA
@@ -273,19 +329,30 @@ class FloatingButtonService : Service() {
             return
         }
 
+        // 요청 시작 직전 검사 (계획서 §6.4 삼중 검사 ①)
+        if (!isAppTaskAlive(applicationContext)) return
+
         setButtonLoading(true)
 
-        scope.launch {
+        val job = scope.launch {
             try {
                 delay(700L)
 
-                val apiRes = runCatching {
+                val apiRes = try {
                     backend.analyze(
                         title = snap.title,
                         channel = snap.channel,
                         duration = snap.duration
                     )
-                }.getOrNull()
+                } catch (e: CancellationException) {
+                    // task 제거로 인한 정상적인 취소 — 통신 오류로 취급하지 않고 그대로 전파한다.
+                    throw e
+                } catch (e: Exception) {
+                    null
+                }
+
+                // 응답 수신 직후 검사 (계획서 §6.4 삼중 검사 ②) — 에러 응답 표시 전에도 적용
+                if (!isAppTaskAlive(applicationContext)) return@launch
 
                 if (apiRes == null) {
                     withContext(Dispatchers.Main) {
@@ -342,6 +409,9 @@ class FloatingButtonService : Service() {
                     detail = detail
                 )
 
+                // 저장 직전 검사 (계획서 §6.4 삼중 검사 ③)
+                if (!isAppTaskAlive(applicationContext)) return@launch
+
                 // ✅ 저장은 IO(현재 코루틴 컨텍스트)에서 수행
                 AppContainer.reportRepository.saveReport(report)
 
@@ -395,6 +465,12 @@ class FloatingButtonService : Service() {
                 }
             } finally {
                 setButtonLoading(false)
+            }
+        }
+        analysisJob = job
+        job.invokeOnCompletion {
+            main.post {
+                if (analysisJob === job) analysisJob = null
             }
         }
     }
